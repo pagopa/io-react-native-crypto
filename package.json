@@ -42,7 +42,7 @@
     "android"
   ],
   "repository": "https://github.com/pagopa/io-react-native-crypto",
-  "author": "PagoPa <cri.tofani@gmail.com> (https://github.com/pagopa)",
+  "author": "PagoPa (https://github.com/pagopa)",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/pagopa/io-react-native-crypto/issues"
