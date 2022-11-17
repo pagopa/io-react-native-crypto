@@ -4,8 +4,7 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
-import android.security.keystore.KeyProperties.SECURITY_LEVEL_STRONGBOX
-import android.security.keystore.KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT
+import android.security.keystore.KeyProperties.*
 import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
@@ -35,7 +34,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       generate(KeyConfig.EC_P_256, keyTag, promise)
     } else {
-      return promise.reject(Exception("API level not supported."))
+      return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
   }
 
@@ -45,6 +44,14 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     keyTag: String,
     promise: Promise
   ) {
+    // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
+    // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called.
+    if (getKeyPair(keyTag) != null) {
+      return ModuleException.KEY_ALREADY_EXISTING.reject(
+        promise,
+        Pair("key", keyTag)
+      )
+    }
     val keyPairGenerator = KeyPairGenerator.getInstance(
       keyConfig.algorithm,
       KEYSTORE_PROVIDER
@@ -77,17 +84,17 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     keyPairGenerator.initialize(keySpec)
     val keyPair = keyPairGenerator.generateKeyPair()
     if (keyConfig == KeyConfig.EC_P_256 && !isKeyHardwareBacked(keyTag)) {
+      deleteKey(keyTag)
       return generate(KeyConfig.RSA, keyTag, promise)
     } else if (!isKeyHardwareBacked(keyTag)) {
-      return promise.reject(ModuleException.UNSUPPORTED_DEVICE.ex)
+      deleteKey(keyTag)
+      return ModuleException.UNSUPPORTED_DEVICE.reject(promise)
     }
     val publicKey = keyPair.public
     publicKeyToJwk(publicKey)?.let {
       return promise.resolve(it)
     }
-    return promise.reject(
-      ModuleException.WRONG_KEY_CONFIGURATION.ex("$keyConfig")
-    )
+    return ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
   }
 
   /**
@@ -191,15 +198,44 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     try {
       keyInfo = factory.getKeySpec(key, KeyInfo::class.java)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        // https://developer.android.com/reference/android/security/keystore/KeyProperties#SECURITY_LEVEL_SOFTWARE
+        // https://developer.android.com/reference/android/security/keystore/KeyProperties
         return keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT
           || keyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX
+          || keyInfo.securityLevel == SECURITY_LEVEL_UNKNOWN_SECURE
       } else {
         @Suppress("DEPRECATION")
         return keyInfo.isInsideSecureHardware
       }
     } catch (e: InvalidKeySpecException) {
       return false
+    }
+  }
+
+  private fun getKeyStore(): KeyStore {
+    val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
+    keyStore.load(null)
+    return keyStore
+  }
+
+  @ReactMethod
+  fun deletePublicKey(keyTag: String, promise: Promise) {
+    // The key pair can also be obtained from the Android Keystore any time as follows:
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      deleteKey(keyTag, promise)
+      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
+    } else {
+      return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+    }
+  }
+
+  private fun deleteKey(keyTag: String, promise: Promise? = null) {
+    getKeyPair(keyTag)?.let {
+      try {
+        getKeyStore().deleteEntry(keyTag)
+      } catch (e: KeyStoreException) {
+        promise?.resolve(false)
+      }
+      promise?.resolve(true)
     }
   }
 
@@ -210,16 +246,15 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       getKeyPair(keyTag)?.let {
         return promise.resolve(publicKeyToJwk(it.public))
       }
-      return promise.reject(ModuleException.PUBLIC_KEY_NOT_FOUND.ex)
+      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
     } else {
-      return promise.reject(ModuleException.API_LEVEL_NOT_SUPPORTED.ex)
+      return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
   }
 
   private fun getKeyPair(keyTag: String): KeyPair? {
     // The key pair can also be obtained from the Android Keystore any time as follows:
-    val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
-    keyStore.load(null)
+    val keyStore = getKeyStore()
     val privateKey = keyStore.getKey(keyTag, null) as? PrivateKey
     privateKey?.also {
       val publicKey = keyStore.getCertificate(keyTag).publicKey
@@ -269,15 +304,25 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     private enum class ModuleException(
       val ex: Exception
     ) {
-      UNSUPPORTED_DEVICE(Exception("Unsupported device.")),
-      WRONG_KEY_CONFIGURATION(Exception("Wrong key config")),
-      PUBLIC_KEY_NOT_FOUND(Exception("Public key not found on device.")),
-      API_LEVEL_NOT_SUPPORTED(Exception("API level not supported."));
+      KEY_ALREADY_EXISTING(Exception("KEY_ALREADY_EXISTING")),
+      UNSUPPORTED_DEVICE(Exception("UNSUPPORTED_DEVICE")),
+      WRONG_KEY_CONFIGURATION(Exception("WRONG_KEY_CONFIGURATION")),
+      PUBLIC_KEY_NOT_FOUND(Exception("PUBLIC_KEY_NOT_FOUND")),
+      API_LEVEL_NOT_SUPPORTED(Exception("API_LEVEL_NOT_SUPPORTED"));
 
-      fun ex(vararg args: String): Exception {
-        return Exception(
-          this.ex.message + ":\n${args.mapNotNull { it }.joinToString("\n")}"
-        )
+      fun reject(
+        promise: Promise,
+        vararg args: Pair<String, String>
+      ) {
+        this.exMap(*args).also {
+          promise.reject(it.first, this.ex.message, it.second)
+        }
+      }
+
+      private fun exMap(vararg args: Pair<String, String>): Pair<String, WritableMap> {
+        val writableMap = WritableNativeMap()
+        args.forEach { writableMap.putString(it.first, it.second) }
+        return Pair(this.ex.message ?: "UNKNOWN", writableMap)
       }
     }
   }

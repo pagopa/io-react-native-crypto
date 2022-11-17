@@ -1,10 +1,12 @@
 import * as React from 'react';
 
 import { SafeAreaView, StyleSheet, View, Text, TextInput, Button } from 'react-native';
-import { generate, getPublicKey, multiply } from '@pagopa/io-react-native-crypto';
+import { deletePublicKey, generate, getPublicKey, multiply } from '@pagopa/io-react-native-crypto';
 
 export default function App() {
   const [result, setResult] = React.useState<number | undefined>();
+  const [logText, setLogText] = React.useState<string | undefined>();
+  const [keyTag, setKeyTag] = React.useState<string>("key");
 
   React.useEffect(() => {
     multiply(3, 7).then(setResult);
@@ -17,6 +19,7 @@ export default function App() {
       }}>
         <Text style={{ fontWeight: "bold", height: "auto" }}>Ket tag: </Text>
         <TextInput
+          value={keyTag}
           style={{
             marginVertical: 8,
             height: 40,
@@ -28,48 +31,57 @@ export default function App() {
         />
         <View style={{
           flexDirection: "row",
-          justifyContent: "space-between"          
+          justifyContent: "space-between"
         }}>
           <Button
             title="get"
             color="#FF0000"
             onPress={() => {
-    getPublicKey("ec").then((value) => {
-      console.log(`${JSON.stringify(value)}`);
-    })
-      .catch((reason) => {
-        console.log(reason);
-      })
-    getPublicKey("rsa").then((value) => {
-      console.log(`${JSON.stringify(value)}`);
-    })
-      .catch((reason) => {
-        console.log(reason);
-      })
+              getPublicKey(keyTag)
+              .then((value) => {
+                console.log(JSON.stringify(value));
+                setLogText(JSON.stringify(value));
+              })
+                .catch((reason) => {
+                  console.log(reason);
+                  setLogText(JSON.stringify(reason));
+                })
             }} />
           <Button
             title="create"
             color="#FF0CCF"
             onPress={() => {
-
-    generate("ec").then((value) => {
-      console.log(`${JSON.stringify(value)}`);
-    })
-      .catch((reason) => {
-        console.log(reason);
-      })
-    generate("rsa").then((value) => {
-      console.log(`${JSON.stringify(value)}`);
-    })
-      .catch((reason) => {
-        console.log(reason);
-      })
+              generate(keyTag)
+              .then((value) => {
+                console.log(JSON.stringify(value));
+                setLogText(JSON.stringify(value));
+              })
+                .catch((reason) => {
+                  /*
+                    {
+                      "nativeStackAndroid":[],
+                      "userInfo":{},"AQAB",
+                      "message":"Error not specified.",
+                      "code":"UNSUPPORTED_DEVICE"
+                    } 
+                   */
+                  console.log(reason);
+                  setLogText(JSON.stringify(reason));
+                })
             }} />
           <Button
             title="delete"
             color="#0000FF"
             onPress={() => {
-
+              deletePublicKey(keyTag)
+              .then((value) => {
+                console.log(`${JSON.stringify(value)}`);
+                setLogText(JSON.stringify((value)));
+              })
+                .catch((reason) => {
+                  console.log(reason);
+                  setLogText(JSON.stringify(reason));
+                })
             }} />
         </View>
         <Text style={{
@@ -77,20 +89,9 @@ export default function App() {
           flexGrow: 1,
           padding: 8,
           backgroundColor: "#CCDDCC"
-        }}></Text>
+        }}>{logText}</Text>
       </View>
-      <Text style={{backgroundColor:"#fff"}}>Result: {result}</Text>
+      <Text style={{ backgroundColor: "#fff" }}>Result: {result}</Text>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  box: {
-    width: 60,
-    height: 60,
-    marginVertical: 20,
-  },
-});

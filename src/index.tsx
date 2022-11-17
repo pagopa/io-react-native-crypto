@@ -42,3 +42,8 @@ export function getPublicKey(keyTag: string): Promise<PublicKey> {
 export function generate(keyTag: string): Promise<PublicKey> {
   return IoReactNativeCrypto.generate(keyTag);
 }
+
+export function deletePublicKey(keyTag: string): Promise<PublicKey> {
+  return IoReactNativeCrypto.deletePublicKey(keyTag);
+}
+ 
