@@ -23,9 +23,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     return NAME
   }
 
-  @RequiresApi(Build.VERSION_CODES.M)
-  private var keyConfig = KeyConfig.EC_P_256
-
   // Example method
   // See https://reactnative.dev/docs/native-modules-android
   @ReactMethod
@@ -36,51 +33,61 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   @ReactMethod
   fun generate(keyTag: String, promise: Promise) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      val keyPairGenerator = KeyPairGenerator.getInstance(
-        keyConfig.algorithm,
-        KEYSTORE_PROVIDER
-      )
-      val keySpec: AlgorithmParameterSpec
-      KeyGenParameterSpec.Builder(
-        keyTag, KeyProperties.PURPOSE_SIGN
-      ).apply {
-        keyConfig.algorithmParam?.let {
-          if (keyConfig == KeyConfig.EC_P_256) {
-            setAlgorithmParameterSpec(ECGenParameterSpec(it))
-          }
-        }
-        setDigests(
-          KeyProperties.DIGEST_SHA256,
-          //KeyProperties.DIGEST_SHA384,
-          KeyProperties.DIGEST_SHA512
-        )
-        // https://www.mail-archive.com/android-developers@googlegroups.com/msg241873.html
-        // Caused by: java.security.InvalidKeyException: Keystore operation failed
-        // android.security.KeyStoreException: Incompatible padding mode
-        //setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-        setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PSS)
-        // Only permit the private key to be used if the user authenticated
-        // within the last five minutes.
-        //.setUserAuthenticationRequired(true)
-        //.setUserAuthenticationValidityDurationSeconds(5 * 60)
-        keySpec = build()
-      }
-      keyPairGenerator.initialize(keySpec)
-      val keyPair = keyPairGenerator.generateKeyPair()
-      if (keyConfig == KeyConfig.EC_P_256 && !isKeyHardwareBacked(keyTag)) {
-        keyConfig = KeyConfig.RSA
-        return generate(keyTag, promise)
-      } else if (!isKeyHardwareBacked(keyTag)) {
-        return promise.reject(Exception("Unsupported device."))
-      }
-      val publicKey = keyPair.public
-      publicKeyToJwk(publicKey)?.let {
-        return promise.resolve(it)
-      }
-      return promise.reject(Exception("Wrong key config $keyConfig."))
+      generate(KeyConfig.EC_P_256, keyTag, promise)
     } else {
       return promise.reject(Exception("API level not supported."))
     }
+  }
+
+  @RequiresApi(Build.VERSION_CODES.M)
+  private fun generate(
+    keyConfig: KeyConfig,
+    keyTag: String,
+    promise: Promise
+  ) {
+    val keyPairGenerator = KeyPairGenerator.getInstance(
+      keyConfig.algorithm,
+      KEYSTORE_PROVIDER
+    )
+    val keySpec: AlgorithmParameterSpec
+    KeyGenParameterSpec.Builder(
+      keyTag, KeyProperties.PURPOSE_SIGN
+    ).apply {
+      keyConfig.algorithmParam?.let {
+        if (keyConfig == KeyConfig.EC_P_256) {
+          setAlgorithmParameterSpec(ECGenParameterSpec(it))
+        }
+      }
+      setDigests(
+        KeyProperties.DIGEST_SHA256,
+        //KeyProperties.DIGEST_SHA384,
+        KeyProperties.DIGEST_SHA512
+      )
+      // https://www.mail-archive.com/android-developers@googlegroups.com/msg241873.html
+      // Caused by: java.security.InvalidKeyException: Keystore operation failed
+      // android.security.KeyStoreException: Incompatible padding mode
+      //setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+      setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PSS)
+      // Only permit the private key to be used if the user authenticated
+      // within the last five minutes.
+      //.setUserAuthenticationRequired(true)
+      //.setUserAuthenticationValidityDurationSeconds(5 * 60)
+      keySpec = build()
+    }
+    keyPairGenerator.initialize(keySpec)
+    val keyPair = keyPairGenerator.generateKeyPair()
+    if (keyConfig == KeyConfig.EC_P_256 && !isKeyHardwareBacked(keyTag)) {
+      return generate(KeyConfig.RSA, keyTag, promise)
+    } else if (!isKeyHardwareBacked(keyTag)) {
+      return promise.reject(ModuleException.UNSUPPORTED_DEVICE.ex)
+    }
+    val publicKey = keyPair.public
+    publicKeyToJwk(publicKey)?.let {
+      return promise.resolve(it)
+    }
+    return promise.reject(
+      ModuleException.WRONG_KEY_CONFIGURATION.ex("$keyConfig")
+    )
   }
 
   /**
@@ -183,7 +190,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     val keyInfo: KeyInfo
     try {
       keyInfo = factory.getKeySpec(key, KeyInfo::class.java)
-      println("Alias: ${keyInfo.keystoreAlias}")
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         // https://developer.android.com/reference/android/security/keystore/KeyProperties#SECURITY_LEVEL_SOFTWARE
         return keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT
@@ -204,9 +210,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       getKeyPair(keyTag)?.let {
         return promise.resolve(publicKeyToJwk(it.public))
       }
-      return promise.reject(Exception("Public key not found on device."))
+      return promise.reject(ModuleException.PUBLIC_KEY_NOT_FOUND.ex)
     } else {
-      return promise.reject(Exception("API level not supported."))
+      return promise.reject(ModuleException.API_LEVEL_NOT_SUPPORTED.ex)
     }
   }
 
@@ -258,6 +264,21 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         signature = "SHA256withRSA/PSS",
         hash = "SHA-256",
       )
+    }
+
+    private enum class ModuleException(
+      val ex: Exception
+    ) {
+      UNSUPPORTED_DEVICE(Exception("Unsupported device.")),
+      WRONG_KEY_CONFIGURATION(Exception("Wrong key config")),
+      PUBLIC_KEY_NOT_FOUND(Exception("Public key not found on device.")),
+      API_LEVEL_NOT_SUPPORTED(Exception("API level not supported."));
+
+      fun ex(vararg args: String): Exception {
+        return Exception(
+          this.ex.message + ":\n${args.mapNotNull { it }.joinToString("\n")}"
+        )
+      }
     }
   }
 }
