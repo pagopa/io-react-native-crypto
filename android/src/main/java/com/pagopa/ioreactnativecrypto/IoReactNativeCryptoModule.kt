@@ -103,24 +103,24 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
    * 4:d=2  hl=2 l=   7 prim: OBJECT            :id-ecPublicKey
    * 13:d=2  hl=2 l=   8 prim: OBJECT            :prime256v1
    * 23:d=1  hl=2 l=  66 prim: BIT STRING
-
+   *
    * https://www.rfc-editor.org/rfc/rfc3279#section-2.3.5 (identifiers)
    * https://www.rfc-editor.org/rfc/rfc5480#section-2
-
+   *
    * In the X.509 certificate, the subjectPublicKeyInfo field has the
    * SubjectPublicKeyInfo type, which has the following ASN.1 syntax:
-
+   *
    * SubjectPublicKeyInfo  ::=  SEQUENCE  {
    *  algorithm         AlgorithmIdentifier,
    *  subjectPublicKey  BIT STRING
    * }
-
+   *
    * The fields in SubjectPublicKeyInfo have the following meanings:
-
-   * o algorithm is the algorithm identifier and parameters for the ECC
+   *
+   * - algorithm is the algorithm identifier and parameters for the ECC
    * public key.
-
-   * o subjectPublicKey is the ECC public key.
+   *
+   * - subjectPublicKey is the ECC public key.
    *
    * From https://www.rfc-editor.org/rfc/rfc5480#section-2.2
    *
