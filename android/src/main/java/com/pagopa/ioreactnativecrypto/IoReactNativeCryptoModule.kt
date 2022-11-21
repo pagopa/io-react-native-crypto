@@ -3,7 +3,6 @@ package com.pagopa.ioreactnativecrypto
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
-import android.security.keystore.KeyProperties
 import android.security.keystore.KeyProperties.*
 import android.util.Base64
 import androidx.annotation.RequiresApi
@@ -17,6 +16,16 @@ import java.security.spec.InvalidKeySpecException
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
+
+  private val keyStore: KeyStore? by lazy {
+    try {
+      KeyStore.getInstance(KEYSTORE_PROVIDER).also {
+        it.load(null)
+      }
+    } catch (e: Exception) {
+      null
+    }
+  }
 
   override fun getName(): String {
     return NAME
@@ -72,8 +81,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     ).also { it.initialize(keySpec) }
     val keyPair = keyPairGenerator.generateKeyPair()
     if (!isKeyHardwareBacked(keyTag)) {
-      if (deleteKey(keyTag)) {
-        return if (keyConfig == KeyConfig.EC_P_256) {
+      return if (deleteKey(keyTag)) {
+        if (keyConfig == KeyConfig.EC_P_256) {
           generate(KeyConfig.RSA, keyTag, promise)
         } else {
           ModuleException.UNSUPPORTED_DEVICE.reject(promise)
@@ -182,13 +191,12 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
   @RequiresApi(Build.VERSION_CODES.M)
   private fun isKeyHardwareBacked(key: PrivateKey): Boolean {
-    val factory = KeyFactory.getInstance(
-      key.algorithm,
-      KEYSTORE_PROVIDER
-    )
-    val keyInfo: KeyInfo
     try {
-      keyInfo = factory.getKeySpec(key, KeyInfo::class.java)
+      val factory = KeyFactory.getInstance(
+        key.algorithm,
+        KEYSTORE_PROVIDER
+      )
+      val keyInfo = factory.getKeySpec(key, KeyInfo::class.java)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         // https://developer.android.com/reference/android/security/keystore/KeyProperties
         return keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT
@@ -198,20 +206,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         @Suppress("DEPRECATION")
         return keyInfo.isInsideSecureHardware
       }
-    } catch (e: InvalidKeySpecException) {
+    } catch (e: Exception) {
       return false
     }
   }
 
-  private fun getKeyStore(): KeyStore {
-    val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
-    keyStore.load(null)
-    return keyStore
-  }
-
   @ReactMethod
   fun deletePublicKey(keyTag: String, promise: Promise) {
-    // The key pair can also be obtained from the Android Keystore any time as follows:
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       deleteKey(keyTag, promise)
     } else {
@@ -219,10 +220,16 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  private fun deleteKey(keyTag: String, promise: Promise? = null): Boolean  {
+  private fun deleteKey(keyTag: String, promise: Promise? = null): Boolean {
     getKeyPair(keyTag)?.let {
       try {
-        getKeyStore().deleteEntry(keyTag)
+        if (keyStore != null) {
+          keyStore!!.deleteEntry(keyTag)
+        } else {
+          promise?.let {
+            ModuleException.KEYSTORE_LOAD_FAILED.reject(it)
+          }
+        }
       } catch (e: KeyStoreException) {
         promise?.let {
           ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(
@@ -232,8 +239,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         }
         return false
       }
-      promise?.resolve(true)
-      return true
     }
     promise?.resolve(true)
     return true
@@ -241,12 +246,11 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun getPublicKey(keyTag: String, promise: Promise) {
-    // The key pair can also be obtained from the Android Keystore any time as follows:
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       getKeyPair(keyTag)?.let {
         return promise.resolve(publicKeyToJwk(it.public))
       }
-      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
+      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise, Pair("keyTag", keyTag))
     } else {
       return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
@@ -254,11 +258,12 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
   private fun getKeyPair(keyTag: String): KeyPair? {
     // The key pair can also be obtained from the Android Keystore any time as follows:
-    val keyStore = getKeyStore()
-    val privateKey = keyStore.getKey(keyTag, null) as? PrivateKey
-    privateKey?.also {
-      val publicKey = keyStore.getCertificate(keyTag).publicKey
-      return KeyPair(publicKey, it)
+    keyStore?.let {
+      val privateKey = it.getKey(keyTag, null) as? PrivateKey
+      privateKey?.also { _ ->
+        val publicKey = it.getCertificate(keyTag).publicKey
+        return KeyPair(publicKey, privateKey)
+      }
     }
     return null
   }
@@ -315,7 +320,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       WRONG_KEY_CONFIGURATION(Exception("WRONG_KEY_CONFIGURATION")),
       PUBLIC_KEY_NOT_FOUND(Exception("PUBLIC_KEY_NOT_FOUND")),
       PUBLIC_KEY_DELETION_ERROR(Exception("PUBLIC_KEY_DELETION_ERROR")),
-      API_LEVEL_NOT_SUPPORTED(Exception("API_LEVEL_NOT_SUPPORTED"));
+      API_LEVEL_NOT_SUPPORTED(Exception("API_LEVEL_NOT_SUPPORTED")),
+      KEYSTORE_LOAD_FAILED(Exception("KEYSTORE_LOAD_FAILED"));
 
       fun reject(
         promise: Promise,
