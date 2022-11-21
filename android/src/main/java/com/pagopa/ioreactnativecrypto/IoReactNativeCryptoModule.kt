@@ -46,19 +46,14 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ) {
     // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
     // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called.
-    if (getKeyPair(keyTag) != null) {
-      return ModuleException.KEY_ALREADY_EXISTING.reject(
+    if (keyExists(keyTag)) {
+      return ModuleException.KEY_ALREADY_EXISTS.reject(
         promise,
-        Pair("key", keyTag)
+        Pair("keyTag", keyTag)
       )
     }
-    val keyPairGenerator = KeyPairGenerator.getInstance(
-      keyConfig.algorithm,
-      KEYSTORE_PROVIDER
-    )
-    val keySpec: AlgorithmParameterSpec
-    KeyGenParameterSpec.Builder(
-      keyTag, KeyProperties.PURPOSE_SIGN
+    val keySpecGenerator = KeyGenParameterSpec.Builder(
+      keyTag, PURPOSE_SIGN
     ).apply {
       keyConfig.algorithmParam?.let {
         if (keyConfig == KeyConfig.EC_P_256) {
@@ -66,29 +61,26 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         }
       }
       setDigests(
-        KeyProperties.DIGEST_SHA256,
-        //KeyProperties.DIGEST_SHA384,
-        KeyProperties.DIGEST_SHA512
+        DIGEST_SHA256,
       )
-      // https://www.mail-archive.com/android-developers@googlegroups.com/msg241873.html
-      // Caused by: java.security.InvalidKeyException: Keystore operation failed
-      // android.security.KeyStoreException: Incompatible padding mode
-      //setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-      setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PSS)
-      // Only permit the private key to be used if the user authenticated
-      // within the last five minutes.
-      //.setUserAuthenticationRequired(true)
-      //.setUserAuthenticationValidityDurationSeconds(5 * 60)
-      keySpec = build()
+      setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
     }
-    keyPairGenerator.initialize(keySpec)
+    val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
+    val keyPairGenerator = KeyPairGenerator.getInstance(
+      keyConfig.algorithm,
+      KEYSTORE_PROVIDER
+    ).also { it.initialize(keySpec) }
     val keyPair = keyPairGenerator.generateKeyPair()
-    if (keyConfig == KeyConfig.EC_P_256 && !isKeyHardwareBacked(keyTag)) {
-      deleteKey(keyTag)
-      return generate(KeyConfig.RSA, keyTag, promise)
-    } else if (!isKeyHardwareBacked(keyTag)) {
-      deleteKey(keyTag)
-      return ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+    if (!isKeyHardwareBacked(keyTag)) {
+      if (deleteKey(keyTag)) {
+        return if (keyConfig == KeyConfig.EC_P_256) {
+          generate(KeyConfig.RSA, keyTag, promise)
+        } else {
+          ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+        }
+      } else {
+        ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(promise)
+      }
     }
     val publicKey = keyPair.public
     publicKeyToJwk(publicKey)?.let {
@@ -97,11 +89,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     return ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
   }
 
+  private fun keyExists(keyTag: String) = getKeyPair(keyTag) != null
+
   /**
    * Return a JWK representation of the PublicKey as for this RFC:
    * https://www.rfc-editor.org/rfc/rfc7517
    *
-   * For the EC key encoded X.509fFormat we have:
+   * For the EC key encoded X.509 Format we have:
    *
    * https://www.openssl.org/docs/man1.1.1/man1/openssl-asn1parse.html
    * openssl asn1parse -in ec-pk.pem
@@ -124,10 +118,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
    *
    * The fields in SubjectPublicKeyInfo have the following meanings:
    *
-   * - algorithm is the algorithm identifier and parameters for the ECC
-   * public key.
-   *
-   * - subjectPublicKey is the ECC public key.
+   * - algorithm: is the algorithm identifier and parameters for the ECC public key.
+   * - subjectPublicKey: is the ECC public key.
    *
    * From https://www.rfc-editor.org/rfc/rfc5480#section-2.2
    *
@@ -151,29 +143,29 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       val ecKey = key.w
 
       // https://www.rfc-editor.org/rfc/rfc7517#section-3
-      nativeMap.putString("kty", KeyConfig.EC_P_256.jwkKty)
-      nativeMap.putString("crv", KeyConfig.EC_P_256.jwkCrv)
+      nativeMap.putString(JwkFields.KTY.key, KeyConfig.EC_P_256.jwkKty)
+      nativeMap.putString(JwkFields.CRV.key, KeyConfig.EC_P_256.jwkCrv)
       nativeMap.putString(
-        "x",
-        base64NoWrap(ecKey.affineX.toByteArray())
+        JwkFields.X.key,
+        ecKey.affineX.toByteArray().base64NoWrap()
       )
       nativeMap.putString(
-        "y",
-        base64NoWrap(ecKey.affineY.toByteArray())
+        JwkFields.Y.key,
+        ecKey.affineY.toByteArray().base64NoWrap()
       )
       return nativeMap
     } else if (key is RSAPublicKey) {
       // https://developer.android.com/reference/java/security/interfaces/RSAPublicKey
       // https://www.rfc-editor.org/rfc/rfc7517#appendix-A.1
-      nativeMap.putString("kty", KeyConfig.RSA.jwkKty)
-      nativeMap.putString("alg", KeyConfig.RSA.jwkAlg)
+      nativeMap.putString(JwkFields.KTY.key, KeyConfig.RSA.jwkKty)
+      nativeMap.putString(JwkFields.ALG.key, KeyConfig.RSA.jwkAlg)
       nativeMap.putString(
-        "n",
-        base64NoWrap(key.modulus.toByteArray())
+        JwkFields.N.key,
+        key.modulus.toByteArray().base64NoWrap()
       )
       nativeMap.putString(
-        "e",
-        base64NoWrap(key.publicExponent.toByteArray())
+        JwkFields.E.key,
+        key.publicExponent.toByteArray().base64NoWrap()
       )
       return nativeMap
     }
@@ -222,21 +214,29 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     // The key pair can also be obtained from the Android Keystore any time as follows:
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       deleteKey(keyTag, promise)
-      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
     } else {
-      return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+      ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
   }
 
-  private fun deleteKey(keyTag: String, promise: Promise? = null) {
+  private fun deleteKey(keyTag: String, promise: Promise? = null): Boolean  {
     getKeyPair(keyTag)?.let {
       try {
         getKeyStore().deleteEntry(keyTag)
       } catch (e: KeyStoreException) {
-        promise?.resolve(false)
+        promise?.let {
+          ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(
+            it,
+            Pair(e.javaClass.name, e.message ?: "")
+          )
+        }
+        return false
       }
       promise?.resolve(true)
+      return true
     }
+    promise?.resolve(true)
+    return true
   }
 
   @ReactMethod
@@ -267,10 +267,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     const val NAME = "IoReactNativeCrypto"
     const val KEYSTORE_PROVIDER = "AndroidKeyStore"
 
-    private fun base64NoWrap(bytes: ByteArray): String {
-      return Base64.encodeToString(bytes, Base64.NO_WRAP)
-    }
-
     @RequiresApi(Build.VERSION_CODES.M)
     private enum class KeyConfig(
       val algorithm: String,
@@ -285,7 +281,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         jwkKty = "EC",
         jwkCrv = "P-256",
         jwkAlg = null,
-        algorithm = KeyProperties.KEY_ALGORITHM_EC,
+        algorithm = KEY_ALGORITHM_EC,
         algorithmParam = "secp256r1",
         signature = "SHA256withECDSA",
         hash = "SHA-256",
@@ -294,28 +290,39 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         jwkKty = "RSA",
         jwkAlg = "RS256",
         jwkCrv = null,
-        algorithm = KeyProperties.KEY_ALGORITHM_RSA,
+        algorithm = KEY_ALGORITHM_RSA,
         algorithmParam = null,
         signature = "SHA256withRSA/PSS",
         hash = "SHA-256",
       )
     }
 
+    private enum class JwkFields(val key: String) {
+      KTY("kty"),
+      CRV("crv"),
+      ALG("alg"),
+      X("x"),
+      Y("y"),
+      N("n"),
+      E("e")
+    }
+
     private enum class ModuleException(
       val ex: Exception
     ) {
-      KEY_ALREADY_EXISTING(Exception("KEY_ALREADY_EXISTING")),
+      KEY_ALREADY_EXISTS(Exception("KEY_ALREADY_EXISTS")),
       UNSUPPORTED_DEVICE(Exception("UNSUPPORTED_DEVICE")),
       WRONG_KEY_CONFIGURATION(Exception("WRONG_KEY_CONFIGURATION")),
       PUBLIC_KEY_NOT_FOUND(Exception("PUBLIC_KEY_NOT_FOUND")),
+      PUBLIC_KEY_DELETION_ERROR(Exception("PUBLIC_KEY_DELETION_ERROR")),
       API_LEVEL_NOT_SUPPORTED(Exception("API_LEVEL_NOT_SUPPORTED"));
 
       fun reject(
         promise: Promise,
         vararg args: Pair<String, String>
       ) {
-        this.exMap(*args).also {
-          promise.reject(it.first, this.ex.message, it.second)
+        exMap(*args).let {
+          promise.reject(it.first, ex.message, it.second)
         }
       }
 
@@ -326,4 +333,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       }
     }
   }
+}
+
+fun ByteArray.base64NoWrap(): String {
+  return Base64.encodeToString(this, Base64.NO_WRAP)
 }
