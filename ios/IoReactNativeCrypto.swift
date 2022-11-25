@@ -99,7 +99,7 @@ class IoReactNativeCrypto: NSObject {
       
       // Sanity checks
       // 04 || X || Y -> "04" = 1, X = 32, Y = 32 -> 1+32+32 = 65
-      guard 1...65 ~= publicKeyBytes.count else {
+      guard publicKeyBytes.count == 65 else {
         return nil // TODO:
       }
       
