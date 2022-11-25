@@ -37,7 +37,6 @@ class IoReactNativeCrypto: NSObject {
     }
     
     let jwk = jwkRepresentation(publicKey)
-    
     resolve(jwk)
   }
   
@@ -53,6 +52,33 @@ class IoReactNativeCrypto: NSObject {
     }
     resolve(true)
     return status
+  }
+  
+  @objc(getPublicKey:withResolver:withRejecter:)
+  func getPublicKey(
+    keyTag:String,
+    resolve:RCTPromiseResolveBlock,
+    reject:RCTPromiseRejectBlock
+  ) {
+    var privateKey: SecKey?
+    var status: OSStatus
+    do {
+      (privateKey, status) = try keyExists(keyTag: keyTag)
+      guard status == errSecSuccess else {
+        return // TODO:
+      }      
+    } catch {
+      // TODO:
+    }
+    
+    guard let privateKey = privateKey,
+          let publicKey = SecKeyCopyPublicKey(privateKey) else {
+      // TODO:
+      return
+    }
+    
+    let jwk = jwkRepresentation(publicKey)
+    resolve(jwk)
   }
   
   private func generatePrivateKey(keyTag: String) throws -> SecKey? {
