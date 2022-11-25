@@ -1,5 +1,6 @@
 @objc(IoReactNativeCrypto)
 class IoReactNativeCrypto: NSObject {
+  private typealias ME = ModuleException
   private let keyConfig: KeyConfig = .ec
   
   @objc(multiply:withB:withResolver:withRejecter:)
@@ -23,21 +24,26 @@ class IoReactNativeCrypto: NSObject {
     do {
       (privateKey, status) = try keyExists(keyTag: keyTag)
       guard status == errSecItemNotFound else {
-        return // TODO:
+        ME.keyAlreadyExists.reject(reject: reject)
+        return
       }
       privateKey = try generatePrivateKey(keyTag: keyTag)
     } catch {
-      // TODO:
+      ME.wrongKeyConfiguration.reject(reject: reject)
     }
     
     guard let privateKey = privateKey,
           let publicKey = SecKeyCopyPublicKey(privateKey) else {
-      // TODO:
+      ME.publicKeyNotFound.reject(reject: reject)
       return
     }
     
-    let jwk = jwkRepresentation(publicKey)
-    resolve(jwk)
+    if let jwk = jwkRepresentation(publicKey) {
+      resolve(jwk)
+      return
+    }
+    
+    ME.wrongKeyConfiguration.reject(reject: reject)
   }
   
   @objc(deletePublicKey:withResolver:withRejecter:)
@@ -48,7 +54,8 @@ class IoReactNativeCrypto: NSObject {
   ) -> OSStatus {
     let status = SecItemDelete(privateKeyKeychainQuery(keyTag: keyTag) as CFDictionary)
     if status != errSecSuccess {
-      // TODO:
+      ME.publicKeyDeletionError.reject(reject: reject, ("status", status))
+      return status
     }
     resolve(true)
     return status
@@ -65,15 +72,16 @@ class IoReactNativeCrypto: NSObject {
     do {
       (privateKey, status) = try keyExists(keyTag: keyTag)
       guard status == errSecSuccess else {
-        return // TODO:
-      }      
+        ME.publicKeyNotFound.reject(reject: reject)
+        return
+      }
     } catch {
-      // TODO:
+      ME.keychainLoadFailed.reject(reject: reject)
     }
     
     guard let privateKey = privateKey,
           let publicKey = SecKeyCopyPublicKey(privateKey) else {
-      // TODO:
+      ME.publicKeyNotFound.reject(reject: reject)
       return
     }
     
@@ -91,7 +99,7 @@ class IoReactNativeCrypto: NSObject {
       .privateKeyUsage, // signing and verification
       &error
     ) else {
-      throw error!.takeRetainedValue() as Error // TODO:
+      throw error!.takeRetainedValue() as Error
     }
     
     // Key Attributes
@@ -110,7 +118,7 @@ class IoReactNativeCrypto: NSObject {
     }
     
     guard let key = SecKeyCreateRandomKey(attributes, &error) else {
-      throw error!.takeRetainedValue() as Error // TODO:
+      throw error!.takeRetainedValue() as Error
     }
     return key
   }
@@ -126,7 +134,7 @@ class IoReactNativeCrypto: NSObject {
       // Sanity checks
       // 04 || X || Y -> "04" = 1, X = 32, Y = 32 -> 1+32+32 = 65
       guard publicKeyBytes.count == 65 else {
-        return nil // TODO:
+        return nil
       }
       
       let xOctets = publicKeyBytes[1...32]
@@ -189,6 +197,39 @@ class IoReactNativeCrypto: NSObject {
       case .ec:
         return .ecdsaSignatureMessageX962SHA256
       }
+    }
+  }
+  
+  private enum ModuleException: String, CaseIterable {
+    case keyAlreadyExists = "KEY_ALREADY_EXISTS"
+    case unsupportedDevice = "UNSUPPORTED_DEVICE"
+    case wrongKeyConfiguration = "WRONG_KEY_CONFIGURATION"
+    case publicKeyNotFound = "PUBLIC_KEY_NOT_FOUND"
+    case publicKeyDeletionError = "PUBLIC_KEY_DELETION_ERROR"
+    case keychainLoadFailed = "KEYCHAIN_LOAD_FAILED"
+    
+    func error(userInfo: [String : Any]? = nil) -> NSError {
+      switch self {
+      case .keyAlreadyExists:
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo);
+      case .unsupportedDevice:
+        return NSError(domain: self.rawValue, code: -2, userInfo: userInfo);
+      case .wrongKeyConfiguration:
+        return NSError(domain: self.rawValue, code: -3, userInfo: userInfo);
+      case .publicKeyNotFound:
+        return NSError(domain: self.rawValue, code: -4, userInfo: userInfo);
+      case .publicKeyDeletionError:
+        return NSError(domain: self.rawValue, code: -5, userInfo: userInfo);
+      case .keychainLoadFailed:
+        return NSError(domain: self.rawValue, code: -6, userInfo: userInfo);
+      }
+    }
+    
+    func reject(reject: RCTPromiseRejectBlock, _ moreUserInfo: (String, Any)...) {
+      var userInfo = [String : Any]()
+      moreUserInfo.forEach { userInfo[$0.0] = $0.1 }
+      let error = error(userInfo: userInfo)
+      reject("\(error.code)", error.domain, error)
     }
   }
 }
