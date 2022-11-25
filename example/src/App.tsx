@@ -19,7 +19,8 @@ export default function App() {
       }}>
         <Text style={{ fontWeight: "bold", height: "auto" }}>Ket tag: </Text>
         <TextInput
-          value={keyTag}
+          onChangeText={newTag => setKeyTag(newTag)}
+          defaultValue={keyTag}
           style={{
             marginVertical: 8,
             height: 40,
@@ -38,10 +39,10 @@ export default function App() {
             color="#FF0000"
             onPress={() => {
               getPublicKey(keyTag)
-              .then((value) => {
-                console.log(JSON.stringify(value));
-                setLogText(JSON.stringify(value));
-              })
+                .then((value) => {
+                  console.log(JSON.stringify(value));
+                  setLogText(JSON.stringify(value));
+                })
                 .catch((reason) => {
                   console.log(reason);
                   setLogText(JSON.stringify(reason));
@@ -52,10 +53,10 @@ export default function App() {
             color="#FF0CCF"
             onPress={() => {
               generate(keyTag)
-              .then((value) => {
-                console.log(JSON.stringify(value));
-                setLogText(JSON.stringify(value));
-              })
+                .then((value) => {
+                  console.log(JSON.stringify(value));
+                  setLogText(JSON.stringify(value));
+                })
                 .catch((reason) => {
                   /*
                     {
@@ -74,10 +75,10 @@ export default function App() {
             color="#0000FF"
             onPress={() => {
               deletePublicKey(keyTag)
-              .then((value) => {
-                console.log(`${JSON.stringify(value)}`);
-                setLogText(JSON.stringify((value)));
-              })
+                .then((value) => {
+                  console.log(`${JSON.stringify(value)}`);
+                  setLogText(JSON.stringify((value)));
+                })
                 .catch((reason) => {
                   console.log(reason);
                   setLogText(JSON.stringify(reason));
