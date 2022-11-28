@@ -53,7 +53,7 @@ class IoReactNativeCrypto: NSObject {
     reject:RCTPromiseRejectBlock
   ) -> OSStatus {
     let status = SecItemDelete(privateKeyKeychainQuery(keyTag: keyTag) as CFDictionary)
-    if status != errSecSuccess {
+    if status != errSecSuccess && status != errSecItemNotFound {
       ME.publicKeyDeletionError.reject(reject: reject, ("status", status))
       return status
     }
