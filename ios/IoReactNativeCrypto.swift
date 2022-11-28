@@ -20,13 +20,13 @@ class IoReactNativeCrypto: NSObject {
   ) -> Void {
     var privateKey: SecKey?
     var status: OSStatus
-    // Erase all content and settings from emulator to start brand new.
+    (privateKey, status) = keyExists(keyTag: keyTag)
+    guard status == errSecItemNotFound else {
+      ME.keyAlreadyExists.reject(reject: reject)
+      return
+    }
+    
     do {
-      (privateKey, status) = try keyExists(keyTag: keyTag)
-      guard status == errSecItemNotFound else {
-        ME.keyAlreadyExists.reject(reject: reject)
-        return
-      }
       privateKey = try generatePrivateKey(keyTag: keyTag)
     } catch {
       ME.wrongKeyConfiguration.reject(reject: reject)
@@ -69,14 +69,11 @@ class IoReactNativeCrypto: NSObject {
   ) {
     var privateKey: SecKey?
     var status: OSStatus
-    do {
-      (privateKey, status) = try keyExists(keyTag: keyTag)
-      guard status == errSecSuccess else {
-        ME.publicKeyNotFound.reject(reject: reject)
-        return
-      }
-    } catch {
-      ME.keychainLoadFailed.reject(reject: reject)
+    
+    (privateKey, status) = keyExists(keyTag: keyTag)
+    guard status == errSecSuccess else {
+      ME.publicKeyNotFound.reject(reject: reject)
+      return
     }
     
     guard let privateKey = privateKey,
@@ -154,8 +151,62 @@ class IoReactNativeCrypto: NSObject {
     return [:]
   }
   
+  @objc(signUTF8Text:withKeyTag:withResolver:withRejecter:)
+  func signUTF8Text(
+    message: String,
+    keyTag: String,
+    resolve:RCTPromiseResolveBlock,
+    reject:RCTPromiseRejectBlock
+  ) {
+    guard let messageData = message.data(using: .utf8) else {
+      ME.invalidUTF8Encoding.reject(reject: reject)
+      return
+    }
+    let key: SecKey?
+    let status: OSStatus
+    (key, status) = keyExists(keyTag: keyTag)
+    guard let key = key, status != errSecSuccess else {
+      ME.publicKeyNotFound.reject(reject: reject)
+      return
+    }
+    let signature: Data?
+    let error: Error?
+    (signature, error) = signData(messageData, key, keyConfig.keySignAlgorithm())
+    guard let signature = signature, error == nil else {
+      ME.unableToSign.reject(
+        reject: reject,
+        ("error", error?.localizedDescription ?? "")
+      )
+      return
+    }
+    // TODO: - to check what happens with an empty string
+    resolve(
+      String(
+        decoding: Data(signature).base64EncodedData(),
+        as: UTF8.self
+      )
+    )
+  }
+  
+  private func signData(
+    _ message: Data,
+    _ privateKey: SecKey,
+    _ signAlgorithm: SecKeyAlgorithm
+  ) -> (Data?, Error?) {
+    var error: Unmanaged<CFError>?
+    guard let signature = SecKeyCreateSignature(
+      privateKey,
+      signAlgorithm,
+      message as CFData,
+      &error
+    ) as Data? else {
+      return (nil, error!.takeRetainedValue() as Error)
+    }
+    return (signature, nil)
+  }
+  
   // https://developer.apple.com/documentation/security/certificate_key_and_trust_services/keys/storing_keys_in_the_keychain
-  private func keyExists(keyTag: String) throws -> (key: SecKey?, status: OSStatus) {
+  private func keyExists(keyTag: String) -> (key: SecKey?, status: OSStatus) {
     let getQuery = privateKeyKeychainQuery(keyTag: keyTag)
     var item: CFTypeRef?
     let status = SecItemCopyMatching(getQuery as CFDictionary, &item)
@@ -207,21 +258,27 @@ class IoReactNativeCrypto: NSObject {
     case publicKeyNotFound = "PUBLIC_KEY_NOT_FOUND"
     case publicKeyDeletionError = "PUBLIC_KEY_DELETION_ERROR"
     case keychainLoadFailed = "KEYCHAIN_LOAD_FAILED"
+    case invalidUTF8Encoding = "INVALID_UTF8_ENCODING"
+    case unableToSign = "UNABLE_TO_SIGN"
     
     func error(userInfo: [String : Any]? = nil) -> NSError {
       switch self {
       case .keyAlreadyExists:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo);
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .unsupportedDevice:
-        return NSError(domain: self.rawValue, code: -2, userInfo: userInfo);
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .wrongKeyConfiguration:
-        return NSError(domain: self.rawValue, code: -3, userInfo: userInfo);
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .publicKeyNotFound:
-        return NSError(domain: self.rawValue, code: -4, userInfo: userInfo);
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .publicKeyDeletionError:
-        return NSError(domain: self.rawValue, code: -5, userInfo: userInfo);
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .keychainLoadFailed:
-        return NSError(domain: self.rawValue, code: -6, userInfo: userInfo);
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+      case .invalidUTF8Encoding:
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+      case .unableToSign:
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       }
     }
     
