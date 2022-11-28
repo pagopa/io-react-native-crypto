@@ -165,7 +165,7 @@ class IoReactNativeCrypto: NSObject {
     let key: SecKey?
     let status: OSStatus
     (key, status) = keyExists(keyTag: keyTag)
-    guard let key = key, status != errSecSuccess else {
+    guard let key = key, status == errSecSuccess else {
       ME.publicKeyNotFound.reject(reject: reject)
       return
     }
@@ -178,8 +178,7 @@ class IoReactNativeCrypto: NSObject {
         ("error", error?.localizedDescription ?? "")
       )
       return
-    }
-    // TODO: - to check what happens with an empty string
+    }    
     resolve(
       String(
         decoding: Data(signature).base64EncodedData(),
