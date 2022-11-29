@@ -8,9 +8,7 @@ import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import java.security.*
-import java.security.interfaces.ECPrivateKey
 import java.security.interfaces.ECPublicKey
-import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
@@ -48,16 +46,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
   @RequiresApi(Build.VERSION_CODES.M)
   private fun generate(
-    keyConfig: KeyConfig,
-    keyTag: String,
-    promise: Promise
+    keyConfig: KeyConfig, keyTag: String, promise: Promise
   ) {
     // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
     // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called.
     if (keyExists(keyTag)) {
       return ModuleException.KEY_ALREADY_EXISTS.reject(
-        promise,
-        Pair("keyTag", keyTag)
+        promise, Pair("keyTag", keyTag)
       )
     }
     val keySpecGenerator = KeyGenParameterSpec.Builder(
@@ -75,8 +70,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
     val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
     val keyPairGenerator = KeyPairGenerator.getInstance(
-      keyConfig.algorithm,
-      KEYSTORE_PROVIDER
+      keyConfig.algorithm, KEYSTORE_PROVIDER
     ).also { it.initialize(keySpec) }
     val keyPair = keyPairGenerator.generateKeyPair()
     if (!isKeyHardwareBacked(keyTag)) {
@@ -154,12 +148,10 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       nativeMap.putString(JwkFields.KTY.key, KeyConfig.EC_P_256.jwkKty)
       nativeMap.putString(JwkFields.CRV.key, KeyConfig.EC_P_256.jwkCrv)
       nativeMap.putString(
-        JwkFields.X.key,
-        ecKey.affineX.toByteArray().base64NoWrap()
+        JwkFields.X.key, ecKey.affineX.toByteArray().base64NoWrap()
       )
       nativeMap.putString(
-        JwkFields.Y.key,
-        ecKey.affineY.toByteArray().base64NoWrap()
+        JwkFields.Y.key, ecKey.affineY.toByteArray().base64NoWrap()
       )
       return nativeMap
     } else if (key is RSAPublicKey) {
@@ -168,12 +160,10 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       nativeMap.putString(JwkFields.KTY.key, KeyConfig.RSA.jwkKty)
       nativeMap.putString(JwkFields.ALG.key, KeyConfig.RSA.jwkAlg)
       nativeMap.putString(
-        JwkFields.N.key,
-        key.modulus.toByteArray().base64NoWrap()
+        JwkFields.N.key, key.modulus.toByteArray().base64NoWrap()
       )
       nativeMap.putString(
-        JwkFields.E.key,
-        key.publicExponent.toByteArray().base64NoWrap()
+        JwkFields.E.key, key.publicExponent.toByteArray().base64NoWrap()
       )
       return nativeMap
     }
@@ -192,18 +182,14 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   private fun isKeyHardwareBacked(key: PrivateKey): Boolean {
     try {
       val factory = KeyFactory.getInstance(
-        key.algorithm,
-        KEYSTORE_PROVIDER
+        key.algorithm, KEYSTORE_PROVIDER
       )
       val keyInfo = factory.getKeySpec(key, KeyInfo::class.java)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         // https://developer.android.com/reference/android/security/keystore/KeyProperties
-        return keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT
-          || keyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX
-          || keyInfo.securityLevel == SECURITY_LEVEL_UNKNOWN_SECURE
+        return keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT || keyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX || keyInfo.securityLevel == SECURITY_LEVEL_UNKNOWN_SECURE
       } else {
-        @Suppress("DEPRECATION")
-        return keyInfo.isInsideSecureHardware
+        @Suppress("DEPRECATION") return keyInfo.isInsideSecureHardware
       }
     } catch (e: Exception) {
       return false
@@ -232,8 +218,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       } catch (e: KeyStoreException) {
         promise?.let {
           ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(
-            it,
-            Pair(e.javaClass.name, e.message ?: "")
+            it, Pair(e.javaClass.name, e.message ?: "")
           )
         }
         return false
@@ -258,11 +243,11 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   @RequiresApi(Build.VERSION_CODES.M)
   @Throws(NoSuchAlgorithmException::class)
   private fun getSignAlgorithm(privateKey: PrivateKey): String {
-    return when (privateKey) {
-        is ECPrivateKey -> {
-          KeyConfig.EC_P_256.signature
-        }
-      is RSAPrivateKey -> {
+    return when (privateKey.algorithm) {
+      KEY_ALGORITHM_EC -> {
+        KeyConfig.EC_P_256.signature
+      }
+      KEY_ALGORITHM_RSA -> {
         KeyConfig.RSA.signature
       }
       else -> {
@@ -280,9 +265,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
           val messageDataBytes = message.toByteArray(charset = Charsets.UTF_8)
           val signAlgorithm = getSignAlgorithm(it)
           val signature = signData(
-            messageDataBytes,
-            it,
-            signAlgorithm
+            messageDataBytes, it, signAlgorithm
           )
           // `encodeToString` uses "US-ASCII" under the hood
           // which is equivalent to UTF-8 for the first 256 bytes.
@@ -307,19 +290,15 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
   @RequiresApi(Build.VERSION_CODES.M)
   @Throws(
-    NoSuchAlgorithmException::class,
-    SignatureException::class,
-    InvalidKeyException::class
+    NoSuchAlgorithmException::class, SignatureException::class, InvalidKeyException::class
   )
   private fun signData(
-    message: ByteArray,
-    privateKey: PrivateKey,
-    signAlgorithm: String
+    message: ByteArray, privateKey: PrivateKey, signAlgorithm: String
   ): ByteArray {
-      val signatureEngine = Signature.getInstance(signAlgorithm)
-      signatureEngine.initSign(privateKey)
-      signatureEngine.update(message)
-      return signatureEngine.sign()
+    val signatureEngine = Signature.getInstance(signAlgorithm)
+    signatureEngine.initSign(privateKey)
+    signatureEngine.update(message)
+    return signatureEngine.sign()
   }
 
   private fun getKeyPair(keyTag: String): KeyPair? {
@@ -369,32 +348,25 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
 
     private enum class JwkFields(val key: String) {
-      KTY("kty"),
-      CRV("crv"),
-      ALG("alg"),
-      X("x"),
-      Y("y"),
-      N("n"),
-      E("e")
+      KTY("kty"), CRV("crv"), ALG("alg"), X("x"), Y("y"), N("n"), E("e")
     }
 
     private enum class ModuleException(
       val ex: Exception
     ) {
-      KEY_ALREADY_EXISTS(Exception("KEY_ALREADY_EXISTS")),
-      UNSUPPORTED_DEVICE(Exception("UNSUPPORTED_DEVICE")),
-      WRONG_KEY_CONFIGURATION(Exception("WRONG_KEY_CONFIGURATION")),
-      PUBLIC_KEY_NOT_FOUND(Exception("PUBLIC_KEY_NOT_FOUND")),
-      PUBLIC_KEY_DELETION_ERROR(Exception("PUBLIC_KEY_DELETION_ERROR")),
-      API_LEVEL_NOT_SUPPORTED(Exception("API_LEVEL_NOT_SUPPORTED")),
-      KEYSTORE_LOAD_FAILED(Exception("KEYSTORE_LOAD_FAILED")),
-      UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")),
-      INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
+      KEY_ALREADY_EXISTS(Exception("KEY_ALREADY_EXISTS")), UNSUPPORTED_DEVICE(Exception("UNSUPPORTED_DEVICE")), WRONG_KEY_CONFIGURATION(
+        Exception("WRONG_KEY_CONFIGURATION")
+      ),
+      PUBLIC_KEY_NOT_FOUND(Exception("PUBLIC_KEY_NOT_FOUND")), PUBLIC_KEY_DELETION_ERROR(Exception("PUBLIC_KEY_DELETION_ERROR")), API_LEVEL_NOT_SUPPORTED(
+        Exception("API_LEVEL_NOT_SUPPORTED")
+      ),
+      KEYSTORE_LOAD_FAILED(Exception("KEYSTORE_LOAD_FAILED")), UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")), INVALID_UTF8_ENCODING(
+        Exception("INVALID_UTF8_ENCODING")
+      ),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM"));
 
       fun reject(
-        promise: Promise,
-        vararg args: Pair<String, String>
+        promise: Promise, vararg args: Pair<String, String>
       ) {
         exMap(*args).let {
           promise.reject(it.first, ex.message, it.second)

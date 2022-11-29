@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { SafeAreaView, StyleSheet, View, Text, TextInput, Button } from 'react-native';
-import { deletePublicKey, generate, getPublicKey, multiply } from '@pagopa/io-react-native-crypto';
+import { deletePublicKey, generate, getPublicKey, multiply, sign } from '@pagopa/io-react-native-crypto';
 
 export default function App() {
   const [result, setResult] = React.useState<number | undefined>();
@@ -34,6 +34,20 @@ export default function App() {
           flexDirection: "row",
           justifyContent: "space-between"
         }}>
+          <Button
+            title="sign"
+            color="#FF0000"
+            onPress={() => {
+              sign("", keyTag)
+                .then((value) => {
+                  console.log(JSON.stringify(value));
+                  setLogText(JSON.stringify(value));
+                })
+                .catch((reason) => {
+                  console.log(reason);
+                  setLogText(JSON.stringify(reason));
+                })
+            }} />
           <Button
             title="get"
             color="#FF0000"
