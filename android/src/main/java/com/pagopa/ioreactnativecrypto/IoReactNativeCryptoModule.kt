@@ -243,6 +243,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   @RequiresApi(Build.VERSION_CODES.M)
   @Throws(NoSuchAlgorithmException::class)
   private fun getSignAlgorithm(privateKey: PrivateKey): String {
+    // Hardware Backed private keys are only reference to the key store actual key.
+    // They don't expose `<EC/RSA>PrivateKey` interface and are only `<EC/RSA>Key`s.
+    // Type check `key is <EC/RSA>PrivateKey` does not work, hence the algorithm check below.
     return when (privateKey.algorithm) {
       KEY_ALGORITHM_EC -> {
         KeyConfig.EC_P_256.signature
