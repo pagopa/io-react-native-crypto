@@ -8,11 +8,12 @@ import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import java.security.*
+import java.security.interfaces.ECPrivateKey
 import java.security.interfaces.ECPublicKey
+import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
-import java.security.spec.InvalidKeySpecException
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -27,15 +28,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  override fun getName(): String {
-    return NAME
-  }
-
-  // Example method
-  // See https://reactnative.dev/docs/native-modules-android
   @ReactMethod
   fun multiply(a: Double, b: Double, promise: Promise) {
     promise.resolve(a * b)
+  }
+
+  override fun getName(): String {
+    return NAME
   }
 
   @ReactMethod
@@ -256,16 +255,86 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  private fun getKeyPair(keyTag: String): KeyPair? {
-    // The key pair can also be obtained from the Android Keystore any time as follows:
-    keyStore?.let {
-      val privateKey = it.getKey(keyTag, null) as? PrivateKey
-      privateKey?.also { _ ->
-        val publicKey = it.getCertificate(keyTag).publicKey
-        return KeyPair(publicKey, privateKey)
+  @RequiresApi(Build.VERSION_CODES.M)
+  @Throws(NoSuchAlgorithmException::class)
+  private fun getSignAlgorithm(privateKey: PrivateKey): String {
+    return when (privateKey) {
+        is ECPrivateKey -> {
+          KeyConfig.EC_P_256.signature
+        }
+      is RSAPrivateKey -> {
+        KeyConfig.RSA.signature
+      }
+      else -> {
+        throw NoSuchAlgorithmException()
       }
     }
-    return null
+  }
+
+  @ReactMethod
+  fun signUTF8Text(message: String, keyTag: String, promise: Promise) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      getKeyPair(keyTag)?.private?.let {
+        try {
+          // Unlike iOS this always returns a byte array.
+          val messageDataBytes = message.toByteArray(charset = Charsets.UTF_8)
+          val signAlgorithm = getSignAlgorithm(it)
+          val signature = signData(
+            messageDataBytes,
+            it,
+            signAlgorithm
+          )
+          // `encodeToString` uses "US-ASCII" under the hood
+          // which is equivalent to UTF-8 for the first 256 bytes.
+          // Base64 does not generate bytes outside this range.
+          val signatureBase64 = Base64.encodeToString(signature, Base64.NO_WRAP)
+          return promise.resolve(signatureBase64)
+        } catch (e: NoSuchAlgorithmException) {
+          return ModuleException.INVALID_SIGN_ALGORITHM.reject(promise)
+        } catch (e: InvalidKeyException) {
+          return ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+        } catch (e: SignatureException) {
+          return ModuleException.UNABLE_TO_SIGN.reject(promise)
+        } catch (e: AssertionError) {
+          return ModuleException.INVALID_UTF8_ENCODING.reject(promise)
+        }
+      }
+      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
+    } else {
+      ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+    }
+  }
+
+  @RequiresApi(Build.VERSION_CODES.M)
+  @Throws(
+    NoSuchAlgorithmException::class,
+    SignatureException::class,
+    InvalidKeyException::class
+  )
+  private fun signData(
+    message: ByteArray,
+    privateKey: PrivateKey,
+    signAlgorithm: String
+  ): ByteArray {
+      val signatureEngine = Signature.getInstance(signAlgorithm)
+      signatureEngine.initSign(privateKey)
+      signatureEngine.update(message)
+      return signatureEngine.sign()
+  }
+
+  private fun getKeyPair(keyTag: String): KeyPair? {
+    try {
+      keyStore?.let {
+        val privateKey = it.getKey(keyTag, null) as? PrivateKey
+        privateKey?.also { _ ->
+          val publicKey = it.getCertificate(keyTag).publicKey
+          return KeyPair(publicKey, privateKey)
+        }
+      }
+      return null
+    } catch (_: Exception) {
+      return null
+    }
   }
 
   companion object {
@@ -277,7 +346,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       val algorithm: String,
       val algorithmParam: String?,
       val signature: String,
-      val hash: String,
       val jwkKty: String,
       val jwkCrv: String?,
       val jwkAlg: String?
@@ -289,7 +357,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         algorithm = KEY_ALGORITHM_EC,
         algorithmParam = "secp256r1",
         signature = "SHA256withECDSA",
-        hash = "SHA-256",
       ),
       RSA(
         jwkKty = "RSA",
@@ -298,7 +365,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         algorithm = KEY_ALGORITHM_RSA,
         algorithmParam = null,
         signature = "SHA256withRSA/PSS",
-        hash = "SHA-256",
       )
     }
 
@@ -321,7 +387,10 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       PUBLIC_KEY_NOT_FOUND(Exception("PUBLIC_KEY_NOT_FOUND")),
       PUBLIC_KEY_DELETION_ERROR(Exception("PUBLIC_KEY_DELETION_ERROR")),
       API_LEVEL_NOT_SUPPORTED(Exception("API_LEVEL_NOT_SUPPORTED")),
-      KEYSTORE_LOAD_FAILED(Exception("KEYSTORE_LOAD_FAILED"));
+      KEYSTORE_LOAD_FAILED(Exception("KEYSTORE_LOAD_FAILED")),
+      UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")),
+      INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
+      INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM"));
 
       fun reject(
         promise: Promise,
