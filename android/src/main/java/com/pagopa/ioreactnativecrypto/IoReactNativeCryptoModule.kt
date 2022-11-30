@@ -286,7 +286,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       }
       return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
     } else {
-      ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+      ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
   }
 
