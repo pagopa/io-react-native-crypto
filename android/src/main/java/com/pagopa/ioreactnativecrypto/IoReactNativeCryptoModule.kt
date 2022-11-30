@@ -26,11 +26,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  @ReactMethod
-  fun multiply(a: Double, b: Double, promise: Promise) {
-    promise.resolve(a * b)
-  }
-
   override fun getName(): String {
     return NAME
   }
@@ -187,7 +182,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       val keyInfo = factory.getKeySpec(key, KeyInfo::class.java)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         // https://developer.android.com/reference/android/security/keystore/KeyProperties
-        return keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT || keyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX || keyInfo.securityLevel == SECURITY_LEVEL_UNKNOWN_SECURE
+        return keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT
+          || keyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX
+          || keyInfo.securityLevel == SECURITY_LEVEL_UNKNOWN_SECURE
       } else {
         @Suppress("DEPRECATION") return keyInfo.isInsideSecureHardware
       }
@@ -234,7 +231,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       getKeyPair(keyTag)?.let {
         return promise.resolve(publicKeyToJwk(it.public))
       }
-      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise, Pair("keyTag", keyTag))
+      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(
+        promise, Pair("keyTag", keyTag)
+      )
     } else {
       return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
@@ -293,7 +292,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
   @RequiresApi(Build.VERSION_CODES.M)
   @Throws(
-    NoSuchAlgorithmException::class, SignatureException::class, InvalidKeyException::class
+    NoSuchAlgorithmException::class,
+    SignatureException::class,
+    InvalidKeyException::class
   )
   private fun signData(
     message: ByteArray, privateKey: PrivateKey, signAlgorithm: String
@@ -351,21 +352,27 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
 
     private enum class JwkFields(val key: String) {
-      KTY("kty"), CRV("crv"), ALG("alg"), X("x"), Y("y"), N("n"), E("e")
+      KTY("kty"),
+      CRV("crv"),
+      ALG("alg"),
+      X("x"),
+      Y("y"),
+      N("n"),
+      E("e")
     }
 
     private enum class ModuleException(
       val ex: Exception
     ) {
-      KEY_ALREADY_EXISTS(Exception("KEY_ALREADY_EXISTS")), UNSUPPORTED_DEVICE(Exception("UNSUPPORTED_DEVICE")), WRONG_KEY_CONFIGURATION(
-        Exception("WRONG_KEY_CONFIGURATION")
-      ),
-      PUBLIC_KEY_NOT_FOUND(Exception("PUBLIC_KEY_NOT_FOUND")), PUBLIC_KEY_DELETION_ERROR(Exception("PUBLIC_KEY_DELETION_ERROR")), API_LEVEL_NOT_SUPPORTED(
-        Exception("API_LEVEL_NOT_SUPPORTED")
-      ),
-      KEYSTORE_LOAD_FAILED(Exception("KEYSTORE_LOAD_FAILED")), UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")), INVALID_UTF8_ENCODING(
-        Exception("INVALID_UTF8_ENCODING")
-      ),
+      KEY_ALREADY_EXISTS(Exception("KEY_ALREADY_EXISTS")),
+      UNSUPPORTED_DEVICE(Exception("UNSUPPORTED_DEVICE")),
+      WRONG_KEY_CONFIGURATION(Exception("WRONG_KEY_CONFIGURATION")),
+      PUBLIC_KEY_NOT_FOUND(Exception("PUBLIC_KEY_NOT_FOUND")),
+      PUBLIC_KEY_DELETION_ERROR(Exception("PUBLIC_KEY_DELETION_ERROR")),
+      API_LEVEL_NOT_SUPPORTED(Exception("API_LEVEL_NOT_SUPPORTED")),
+      KEYSTORE_LOAD_FAILED(Exception("KEYSTORE_LOAD_FAILED")),
+      UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")),
+      INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM"));
 
       fun reject(
