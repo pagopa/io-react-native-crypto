@@ -4,13 +4,8 @@ import { SafeAreaView, StyleSheet, View, Text, TextInput, Button } from 'react-n
 import { deletePublicKey, generate, getPublicKey, multiply, sign } from '@pagopa/io-react-native-crypto';
 
 export default function App() {
-  const [result, setResult] = React.useState<number | undefined>();
   const [logText, setLogText] = React.useState<string | undefined>();
   const [keyTag, setKeyTag] = React.useState<string>("key");
-
-  React.useEffect(() => {
-    multiply(3, 7).then(setResult);
-  }, []);
 
   return (
     <SafeAreaView style={{ flex: 1, padding: 20, backgroundColor: "#ccc" }}>
@@ -106,7 +101,6 @@ export default function App() {
           backgroundColor: "#CCDDCC"
         }}>{logText}</Text>
       </View>
-      <Text style={{ backgroundColor: "#fff" }}>Result: {result}</Text>
     </SafeAreaView>
   );
 }

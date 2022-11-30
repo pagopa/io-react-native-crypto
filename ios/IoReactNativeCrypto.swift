@@ -3,15 +3,6 @@ class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
   private let keyConfig: KeyConfig = .ec
   
-  @objc(multiply:withB:withResolver:withRejecter:)
-  func multiply(
-    a: Float, b: Float,
-    resolve:RCTPromiseResolveBlock,
-    reject:RCTPromiseRejectBlock
-  ) -> Void {
-    resolve(a*b)
-  }
-  
   @objc(generate:withResolver:withRejecter:)
   func generate(
     keyTag: String,
