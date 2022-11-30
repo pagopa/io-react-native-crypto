@@ -1,39 +1,48 @@
 import * as React from 'react';
 
-import { SafeAreaView, StyleSheet, View, Text, TextInput, Button } from 'react-native';
-import { deletePublicKey, generate, getPublicKey, multiply, sign } from '@pagopa/io-react-native-crypto';
+import { SafeAreaView, View, Text, TextInput, Button } from 'react-native';
+import {
+  deletePublicKey,
+  generate,
+  getPublicKey,
+  sign,
+} from '@pagopa/io-react-native-crypto';
 
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
-  const [keyTag, setKeyTag] = React.useState<string>("key");
+  const [keyTag, setKeyTag] = React.useState<string>('key');
 
   return (
-    <SafeAreaView style={{ flex: 1, padding: 20, backgroundColor: "#ccc" }}>
-      <View style={{
-        flex: 1
-      }}>
-        <Text style={{ fontWeight: "bold", height: "auto" }}>Ket tag: </Text>
+    <SafeAreaView style={{ flex: 1, padding: 20, backgroundColor: '#ccc' }}>
+      <View
+        style={{
+          flex: 1,
+        }}
+      >
+        <Text style={{ fontWeight: 'bold', height: 'auto' }}>Ket tag: </Text>
         <TextInput
-          onChangeText={newTag => setKeyTag(newTag)}
+          onChangeText={(newTag) => setKeyTag(newTag)}
           defaultValue={keyTag}
           style={{
             marginVertical: 8,
             height: 40,
-            borderColor: "black",
+            borderColor: 'black',
             borderWidth: 1,
-            borderRadius: 10
+            borderRadius: 10,
           }}
           placeholder="key tag"
         />
-        <View style={{
-          flexDirection: "row",
-          justifyContent: "space-between"
-        }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+          }}
+        >
           <Button
             title="sign"
             color="#FF0F0C"
             onPress={() => {
-              sign("", keyTag)
+              sign('', keyTag)
                 .then((value) => {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));
@@ -41,8 +50,9 @@ export default function App() {
                 .catch((reason) => {
                   console.log(reason);
                   setLogText(JSON.stringify(reason));
-                })
-            }} />
+                });
+            }}
+          />
           <Button
             title="get"
             color="#FF0000"
@@ -55,8 +65,9 @@ export default function App() {
                 .catch((reason) => {
                   console.log(reason);
                   setLogText(JSON.stringify(reason));
-                })
-            }} />
+                });
+            }}
+          />
           <Button
             title="create"
             color="#FF0CCF"
@@ -77,8 +88,9 @@ export default function App() {
                    */
                   console.log(reason);
                   setLogText(JSON.stringify(reason));
-                })
-            }} />
+                });
+            }}
+          />
           <Button
             title="delete"
             color="#0000FF"
@@ -86,20 +98,25 @@ export default function App() {
               deletePublicKey(keyTag)
                 .then((value) => {
                   console.log(`${JSON.stringify(value)}`);
-                  setLogText(JSON.stringify((value)));
+                  setLogText(JSON.stringify(value));
                 })
                 .catch((reason) => {
                   console.log(reason);
                   setLogText(JSON.stringify(reason));
-                })
-            }} />
+                });
+            }}
+          />
         </View>
-        <Text style={{
-          marginVertical: 16,
-          flexGrow: 1,
-          padding: 8,
-          backgroundColor: "#CCDDCC"
-        }}>{logText}</Text>
+        <Text
+          style={{
+            marginVertical: 16,
+            flexGrow: 1,
+            padding: 8,
+            backgroundColor: '#CCDDCC',
+          }}
+        >
+          {logText}
+        </Text>
       </View>
     </SafeAreaView>
   );
