@@ -6,14 +6,7 @@ declare module 'io-react-native-crypto' {
   export function getPublicKey(keyTag: string): Promise<PublicKey>;
 
   // function to sign a message with a key pair on the device
-  export function sign(keyTag: string, message: string): Promise<string>;
-
-  // function to verify a message with a key pair on the device
-  export function verify(
-    keyTag: string,
-    message: string,
-    signature: string
-  ): Promise<boolean>;
+  export function sign(message: string, keyTag: string): Promise<string>;
 
   // function to delete a key pair on the device
   export function deleteKey(keyTag: string): Promise<boolean>;
