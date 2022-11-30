@@ -43,6 +43,6 @@ export function deletePublicKey(keyTag: string): Promise<PublicKey> {
   return IoReactNativeCrypto.deletePublicKey(keyTag);
 }
 
-export function sign(message: string, keyTag: String): Promise<string> {
+export function sign(message: string, keyTag: string): Promise<string> {
   return IoReactNativeCrypto.signUTF8Text(message, keyTag);
 }

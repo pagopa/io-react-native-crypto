@@ -11,7 +11,7 @@ import {
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
   const [keyTag, setKeyTag] = React.useState<string>('key');
-
+  
   return (
     <SafeAreaView style={{ flex: 1, padding: 20, backgroundColor: '#ccc' }}>
       <View
