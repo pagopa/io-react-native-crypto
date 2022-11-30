@@ -31,10 +31,6 @@ const IoReactNativeCrypto = NativeModules.IoReactNativeCrypto
       }
     );
 
-export function multiply(a: number, b: number): Promise<number> {
-  return IoReactNativeCrypto.multiply(a, b);
-}
-
 export function getPublicKey(keyTag: string): Promise<PublicKey> {
   return IoReactNativeCrypto.getPublicKey(keyTag);
 }
