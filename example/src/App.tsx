@@ -1,4 +1,5 @@
 import * as React from 'react';
+import ProgressBar from 'react-native-progress/Bar';
 
 import { SafeAreaView, View, Text, TextInput, Button } from 'react-native';
 import {
@@ -11,7 +12,7 @@ import {
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
   const [keyTag, setKeyTag] = React.useState<string>('key');
-  
+
   return (
     <SafeAreaView style={{ flex: 1, padding: 20, backgroundColor: '#ccc' }}>
       <View
@@ -117,6 +118,7 @@ export default function App() {
         >
           {logText}
         </Text>
+        <ProgressBar style={{ margin: 16 }} indeterminate={true} />
       </View>
     </SafeAreaView>
   );

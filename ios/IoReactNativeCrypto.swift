@@ -6,35 +6,41 @@ class IoReactNativeCrypto: NSObject {
   @objc(generate:withResolver:withRejecter:)
   func generate(
     keyTag: String,
-    resolve:RCTPromiseResolveBlock,
-    reject:RCTPromiseRejectBlock
+    resolve:@escaping RCTPromiseResolveBlock,
+    reject:@escaping RCTPromiseRejectBlock
   ) -> Void {
-    var privateKey: SecKey?
-    var status: OSStatus
-    (privateKey, status) = keyExists(keyTag: keyTag)
-    guard status == errSecItemNotFound else {
-      ME.keyAlreadyExists.reject(reject: reject)
-      return
-    }
-    
-    do {
-      privateKey = try generatePrivateKey(keyTag: keyTag)
-    } catch {
+    DispatchQueue.global().async { [weak self] in
+      guard let self = self else {
+        ME.threadingError.reject(reject: reject)
+        return
+      }
+      var privateKey: SecKey?
+      var status: OSStatus
+      (privateKey, status) = self.keyExists(keyTag: keyTag)
+      guard status == errSecItemNotFound else {
+        ME.keyAlreadyExists.reject(reject: reject)
+        return
+      }
+      
+      do {
+        privateKey = try self.generatePrivateKey(keyTag: keyTag)
+      } catch {
+        ME.wrongKeyConfiguration.reject(reject: reject)
+      }
+      
+      guard let privateKey = privateKey,
+            let publicKey = SecKeyCopyPublicKey(privateKey) else {
+        ME.publicKeyNotFound.reject(reject: reject)
+        return
+      }
+      
+      if let jwk = self.jwkRepresentation(publicKey) {
+        resolve(jwk)
+        return
+      }
+      
       ME.wrongKeyConfiguration.reject(reject: reject)
     }
-    
-    guard let privateKey = privateKey,
-          let publicKey = SecKeyCopyPublicKey(privateKey) else {
-      ME.publicKeyNotFound.reject(reject: reject)
-      return
-    }
-    
-    if let jwk = jwkRepresentation(publicKey) {
-      resolve(jwk)
-      return
-    }
-    
-    ME.wrongKeyConfiguration.reject(reject: reject)
   }
   
   @objc(deletePublicKey:withResolver:withRejecter:)
@@ -42,14 +48,14 @@ class IoReactNativeCrypto: NSObject {
     keyTag:String,
     resolve:RCTPromiseResolveBlock,
     reject:RCTPromiseRejectBlock
-  ) -> OSStatus {
+  ) {
     let status = SecItemDelete(privateKeyKeychainQuery(keyTag: keyTag) as CFDictionary)
     if status != errSecSuccess && status != errSecItemNotFound {
       ME.publicKeyDeletionError.reject(reject: reject, ("status", status))
-      return status
+      return
     }
     resolve(true)
-    return status
+    return
   }
   
   @objc(getPublicKey:withResolver:withRejecter:)
@@ -146,36 +152,45 @@ class IoReactNativeCrypto: NSObject {
   func signUTF8Text(
     message: String,
     keyTag: String,
-    resolve:RCTPromiseResolveBlock,
-    reject:RCTPromiseRejectBlock
+    resolve:@escaping RCTPromiseResolveBlock,
+    reject:@escaping RCTPromiseRejectBlock
   ) {
-    guard let messageData = message.data(using: .utf8) else {
-      ME.invalidUTF8Encoding.reject(reject: reject)
-      return
-    }
-    let key: SecKey?
-    let status: OSStatus
-    (key, status) = keyExists(keyTag: keyTag)
-    guard let key = key, status == errSecSuccess else {
-      ME.publicKeyNotFound.reject(reject: reject)
-      return
-    }
-    let signature: Data?
-    let error: Error?
-    (signature, error) = signData(messageData, key, keyConfig.keySignAlgorithm())
-    guard let signature = signature, error == nil else {
-      ME.unableToSign.reject(
-        reject: reject,
-        ("error", error?.localizedDescription ?? "")
+    DispatchQueue.global().async { [weak self] in
+      guard let self = self else {
+        ME.threadingError.reject(reject: reject)
+        return
+      }
+      guard let messageData = message.data(using: .utf8) else {
+        ME.invalidUTF8Encoding.reject(reject: reject)
+        return
+      }
+      let key: SecKey?
+      let status: OSStatus
+      (key, status) = self.keyExists(keyTag: keyTag)
+      guard let key = key, status == errSecSuccess else {
+        ME.publicKeyNotFound.reject(reject: reject)
+        return
+      }
+      let signature: Data?
+      let error: Error?
+      (signature, error) = self.signData(
+        messageData, key,
+        self.keyConfig.keySignAlgorithm()
       )
-      return
-    }    
-    resolve(
-      String(
-        decoding: Data(signature).base64EncodedData(),
-        as: UTF8.self
+      guard let signature = signature, error == nil else {
+        ME.unableToSign.reject(
+          reject: reject,
+          ("error", error?.localizedDescription ?? "")
+        )
+        return
+      }
+      resolve(
+        String(
+          decoding: Data(signature).base64EncodedData(),
+          as: UTF8.self
+        )
       )
-    )
+    }
   }
   
   private func signData(
@@ -250,6 +265,7 @@ class IoReactNativeCrypto: NSObject {
     case keychainLoadFailed = "KEYCHAIN_LOAD_FAILED"
     case invalidUTF8Encoding = "INVALID_UTF8_ENCODING"
     case unableToSign = "UNABLE_TO_SIGN"
+    case threadingError = "THREADING_ERROR"
     
     func error(userInfo: [String : Any]? = nil) -> NSError {
       switch self {
@@ -268,6 +284,8 @@ class IoReactNativeCrypto: NSObject {
       case .invalidUTF8Encoding:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .unableToSign:
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+      case .threadingError:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       }
     }

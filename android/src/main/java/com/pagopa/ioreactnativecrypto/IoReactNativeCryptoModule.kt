@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
 import android.util.Base64
+import android.util.Log
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import java.security.*
@@ -15,6 +16,8 @@ import java.security.spec.ECGenParameterSpec
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
+
+  var threadHanle: Thread? = null
 
   private val keyStore: KeyStore? by lazy {
     try {
@@ -45,45 +48,67 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ) {
     // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
     // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called.
-    if (keyExists(keyTag)) {
-      return ModuleException.KEY_ALREADY_EXISTS.reject(
-        promise, Pair("keyTag", keyTag)
-      )
-    }
-    val keySpecGenerator = KeyGenParameterSpec.Builder(
-      keyTag, PURPOSE_SIGN
-    ).apply {
-      keyConfig.algorithmParam?.let {
-        if (keyConfig == KeyConfig.EC_P_256) {
-          setAlgorithmParameterSpec(ECGenParameterSpec(it))
+    threadHanle = Thread {
+      try {
+        for (i in 1..1_000_000_000) {
+          var a = i*2
         }
+      } catch (e: Exception) {
+        //
       }
-      setDigests(
-        DIGEST_SHA256,
-      )
-      setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
-    }
-    val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
-    val keyPairGenerator = KeyPairGenerator.getInstance(
-      keyConfig.algorithm, KEYSTORE_PROVIDER
-    ).also { it.initialize(keySpec) }
-    val keyPair = keyPairGenerator.generateKeyPair()
-    if (!isKeyHardwareBacked(keyTag)) {
-      return if (deleteKey(keyTag)) {
-        if (keyConfig == KeyConfig.EC_P_256) {
-          generate(KeyConfig.RSA, keyTag, promise)
+      if (keyExists(keyTag)) {
+        ModuleException.KEY_ALREADY_EXISTS.reject(
+          promise, Pair("keyTag", keyTag)
+        )
+        threadHanle = null
+        return@Thread
+      }
+      val keySpecGenerator = KeyGenParameterSpec.Builder(
+        keyTag, PURPOSE_SIGN
+      ).apply {
+        keyConfig.algorithmParam?.let {
+          if (keyConfig == KeyConfig.EC_P_256) {
+            setAlgorithmParameterSpec(ECGenParameterSpec(it))
+          }
+        }
+        setDigests(
+          DIGEST_SHA256,
+        )
+        setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
+      }
+      val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
+      val keyPairGenerator = KeyPairGenerator.getInstance(
+        keyConfig.algorithm, KEYSTORE_PROVIDER
+      ).also { it.initialize(keySpec) }
+      val keyPair = keyPairGenerator.generateKeyPair()
+      if (!isKeyHardwareBacked(keyTag)) {
+        if (deleteKey(keyTag)) {
+          if (keyConfig == KeyConfig.EC_P_256) {
+            generate(KeyConfig.RSA, keyTag, promise)
+            threadHanle = null
+            return@Thread
+          } else {
+            ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+            threadHanle = null
+            return@Thread
+          }
         } else {
-          ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+          ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(promise)
+          threadHanle = null
+          return@Thread
         }
-      } else {
-        ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(promise)
       }
+      val publicKey = keyPair.public
+      publicKeyToJwk(publicKey)?.let {
+        promise.resolve(it)
+        threadHanle = null
+        return@Thread
+      }
+      ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+      threadHanle = null
+      return@Thread
     }
-    val publicKey = keyPair.public
-    publicKeyToJwk(publicKey)?.let {
-      return promise.resolve(it)
-    }
-    return ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+    threadHanle?.start()
   }
 
   private fun keyExists(keyTag: String) = getKeyPair(keyTag) != null
