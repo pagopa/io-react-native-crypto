@@ -9,6 +9,12 @@ class IoReactNativeCrypto: NSObject {
     resolve:@escaping RCTPromiseResolveBlock,
     reject:@escaping RCTPromiseRejectBlock
   ) -> Void {
+    // https://reactnative.dev/docs/native-modules-ios#threading
+    //
+    // If only one of your methods is long-running
+    // (or needs to be run on a different queue than the others for some reason),
+    // you can use dispatch_async inside the method to perform that particular
+    // method's code on another queue, without affecting the others:
     DispatchQueue.global().async { [weak self] in
       guard let self = self else {
         ME.threadingError.reject(reject: reject)
@@ -35,6 +41,7 @@ class IoReactNativeCrypto: NSObject {
       }
       
       if let jwk = self.jwkRepresentation(publicKey) {
+        // You can invoke callback from any thread/queue
         resolve(jwk)
         return
       }

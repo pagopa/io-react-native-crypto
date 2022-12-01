@@ -46,16 +46,21 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   private fun generate(
     keyConfig: KeyConfig, keyTag: String, promise: Promise
   ) {
-    // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
-    // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called.
+    // https://reactnative.dev/docs/native-modules-android#threading
+    //
+    // To date, on Android, all native module async methods execute on one thread.
+    // Native modules should not have any assumptions about what thread
+    // they are being called on, as the current assignment is subject to change
+    // in the future.
+    // If a blocking call is required, the heavy work
+    // should be dispatched to an internally managed worker thread,
+    // and any callbacks distributed from there.
     threadHanle = Thread {
-      try {
-        for (i in 1..1_000_000_000) {
-          var a = i*2
-        }
-      } catch (e: Exception) {
-        //
+      for (i in 1..1_000_000_000) {
+        var a = i * 2
       }
+      // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
+      // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called
       if (keyExists(keyTag)) {
         ModuleException.KEY_ALREADY_EXISTS.reject(
           promise, Pair("keyTag", keyTag)
