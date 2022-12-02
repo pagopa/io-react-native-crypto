@@ -43,7 +43,7 @@ export default function App() {
             title="sign"
             color="#FF0F0C"
             onPress={() => {
-              sign('', keyTag)
+              sign("Ceci n'est pas une nonce", keyTag)
                 .then((value) => {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));

@@ -5,7 +5,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
 import android.util.Base64
-import android.util.Log
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import java.security.*
@@ -13,6 +12,7 @@ import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.RSAKeyGenParameterSpec
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -71,12 +71,21 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         keyConfig.algorithmParam?.let {
           if (keyConfig == KeyConfig.EC_P_256) {
             setAlgorithmParameterSpec(ECGenParameterSpec(it))
+          } else {
+            setAlgorithmParameterSpec(
+              RSAKeyGenParameterSpec(
+                it.toInt(),
+                RSAKeyGenParameterSpec.F4 // 65537
+              )
+            )
           }
         }
         setDigests(
           DIGEST_SHA256,
         )
-        setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
+        if (keyConfig == KeyConfig.RSA) {
+          setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
+        }
       }
       val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
       val keyPairGenerator = KeyPairGenerator.getInstance(
@@ -373,7 +382,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         jwkAlg = "RS256",
         jwkCrv = null,
         algorithm = KEY_ALGORITHM_RSA,
-        algorithmParam = null,
+        algorithmParam = "2048",
         signature = "SHA256withRSA/PSS",
       )
     }
