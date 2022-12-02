@@ -56,9 +56,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     // should be dispatched to an internally managed worker thread,
     // and any callbacks distributed from there.
     threadHanle = Thread {
-      for (i in 1..1_000_000_000) {
-        var a = i * 2
-      }
       // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
       // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called
       if (keyExists(keyTag)) {
