@@ -122,13 +122,26 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         threadHanle = null
         return@Thread
       } catch (e: NoSuchAlgorithmException) {
-        ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+        /*
+        TODO: when (ex) {
+            is KeyTooLongException [...] ??? Could be feasible
+         */
+        ModuleException.WRONG_KEY_CONFIGURATION.reject(
+          promise,
+          Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
         return@Thread
       } catch (e: InvalidAlgorithmParameterException) {
-        ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+        ModuleException.WRONG_KEY_CONFIGURATION.reject(
+          promise,
+          Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
         return@Thread
       } catch (e: NoSuchProviderException) {
-        ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+        ModuleException.UNSUPPORTED_DEVICE.reject(
+          promise,
+          Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
         return@Thread
       }
     }
@@ -324,13 +337,25 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
           val signatureBase64 = Base64.encodeToString(signature, Base64.NO_WRAP)
           return promise.resolve(signatureBase64)
         } catch (e: NoSuchAlgorithmException) {
-          return ModuleException.INVALID_SIGN_ALGORITHM.reject(promise)
+          return ModuleException.INVALID_SIGN_ALGORITHM.reject(
+            promise,
+            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+          )
         } catch (e: InvalidKeyException) {
-          return ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+          return ModuleException.WRONG_KEY_CONFIGURATION.reject(
+            promise,
+            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+          )
         } catch (e: SignatureException) {
-          return ModuleException.UNABLE_TO_SIGN.reject(promise)
+          return ModuleException.UNABLE_TO_SIGN.reject(
+            promise,
+            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+          )
         } catch (e: AssertionError) {
-          return ModuleException.INVALID_UTF8_ENCODING.reject(promise)
+          return ModuleException.INVALID_UTF8_ENCODING.reject(
+            promise,
+            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+          )
         }
       }
       return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
@@ -372,6 +397,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   companion object {
     const val NAME = "IoReactNativeCrypto"
     const val KEYSTORE_PROVIDER = "AndroidKeyStore"
+    const val ERROR_USER_INFO_KEY = "error"
 
     @RequiresApi(Build.VERSION_CODES.M)
     private enum class KeyConfig(
