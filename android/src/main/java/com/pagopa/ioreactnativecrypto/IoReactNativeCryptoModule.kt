@@ -56,68 +56,81 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     // should be dispatched to an internally managed worker thread,
     // and any callbacks distributed from there.
     threadHanle = Thread {
-      // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
-      // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called
-      if (keyExists(keyTag)) {
-        ModuleException.KEY_ALREADY_EXISTS.reject(
-          promise, Pair("keyTag", keyTag)
-        )
-        threadHanle = null
-        return@Thread
-      }
-      val keySpecGenerator = KeyGenParameterSpec.Builder(
-        keyTag, PURPOSE_SIGN
-      ).apply {
-        keyConfig.algorithmParam?.let {
-          if (keyConfig == KeyConfig.EC_P_256) {
-            setAlgorithmParameterSpec(ECGenParameterSpec(it))
-          } else {
-            setAlgorithmParameterSpec(
-              RSAKeyGenParameterSpec(
-                it.toInt(),
-                RSAKeyGenParameterSpec.F4 // 65537
-              )
-            )
-          }
-        }
-        setDigests(
-          DIGEST_SHA256,
-        )
-        if (keyConfig == KeyConfig.RSA) {
-          setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
-        }
-      }
-      val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
-      val keyPairGenerator = KeyPairGenerator.getInstance(
-        keyConfig.algorithm, KEYSTORE_PROVIDER
-      ).also { it.initialize(keySpec) }
-      val keyPair = keyPairGenerator.generateKeyPair()
-      if (!isKeyHardwareBacked(keyTag)) {
-        if (deleteKey(keyTag)) {
-          if (keyConfig == KeyConfig.EC_P_256) {
-            generate(KeyConfig.RSA, keyTag, promise)
-            threadHanle = null
-            return@Thread
-          } else {
-            ModuleException.UNSUPPORTED_DEVICE.reject(promise)
-            threadHanle = null
-            return@Thread
-          }
-        } else {
-          ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(promise)
+      try {
+        // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
+        // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called
+        if (keyExists(keyTag)) {
+          ModuleException.KEY_ALREADY_EXISTS.reject(
+            promise, Pair("keyTag", keyTag)
+          )
           threadHanle = null
           return@Thread
         }
-      }
-      val publicKey = keyPair.public
-      publicKeyToJwk(publicKey)?.let {
-        promise.resolve(it)
+        val keySpecGenerator = KeyGenParameterSpec.Builder(
+          keyTag, PURPOSE_SIGN
+        ).apply {
+          keyConfig.algorithmParam?.let {
+            if (keyConfig == KeyConfig.EC_P_256) {
+              setAlgorithmParameterSpec(ECGenParameterSpec(it))
+            } else {
+              setAlgorithmParameterSpec(
+                RSAKeyGenParameterSpec(
+                  // RSA key size must be >= 512 and <= 8192
+                  it.toInt(),
+                  RSAKeyGenParameterSpec.F4 // 65537
+                )
+              )
+            }
+          }
+          setDigests(
+            DIGEST_SHA256,
+          )
+          if (keyConfig == KeyConfig.RSA) {
+            setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
+          }
+        }
+        val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
+        val keyPairGenerator = KeyPairGenerator.getInstance(
+          keyConfig.algorithm,
+          KEYSTORE_PROVIDER
+        ).also { it.initialize(keySpec) }
+        val keyPair = keyPairGenerator.generateKeyPair()
+        if (!isKeyHardwareBacked(keyTag)) {
+          if (deleteKey(keyTag)) {
+            if (keyConfig == KeyConfig.EC_P_256) {
+              generate(KeyConfig.RSA, keyTag, promise)
+              threadHanle = null
+              return@Thread
+            } else {
+              ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+              threadHanle = null
+              return@Thread
+            }
+          } else {
+            ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(promise)
+            threadHanle = null
+            return@Thread
+          }
+        }
+        val publicKey = keyPair.public
+        publicKeyToJwk(publicKey)?.let {
+          promise.resolve(it)
+          threadHanle = null
+          return@Thread
+        }
+        ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
         threadHanle = null
         return@Thread
+      } catch (e: NoSuchAlgorithmException) {
+        ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+        return@Thread
+      } catch (e: InvalidAlgorithmParameterException) {
+        ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+        return@Thread
+      } catch (e: NoSuchProviderException) {
+        ModuleException.UNSUPPORTED_DEVICE.reject(promise)
+        return@Thread
       }
-      ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
-      threadHanle = null
-      return@Thread
     }
     threadHanle?.start()
   }
