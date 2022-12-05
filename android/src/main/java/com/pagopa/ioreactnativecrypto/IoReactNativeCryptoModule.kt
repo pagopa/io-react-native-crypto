@@ -289,9 +289,15 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
             ModuleException.KEYSTORE_LOAD_FAILED.reject(it)
           }
         }
-      } catch (e: KeyStoreException) {
+      } catch (e: Exception) {
+        var me = ModuleException.UNKNOWN_EXCEPTION
+        when (e) {
+          is KeyStoreException -> {
+            me = ModuleException.PUBLIC_KEY_DELETION_ERROR
+          }
+        }
         promise?.let {
-          ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(
+          me.reject(
             it, Pair(e.javaClass.name, e.message ?: "")
           )
         }
@@ -351,18 +357,20 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
           // Base64 does not generate bytes outside this range.
           val signatureBase64 = Base64.encodeToString(signature, Base64.NO_WRAP)
           return promise.resolve(signatureBase64)
-        } catch (e: NoSuchAlgorithmException) {
-          return ModuleException.INVALID_SIGN_ALGORITHM.reject(
-            promise,
-            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-          )
-        } catch (e: InvalidKeyException) {
-          return ModuleException.WRONG_KEY_CONFIGURATION.reject(
-            promise,
-            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-          )
-        } catch (e: SignatureException) {
-          return ModuleException.UNABLE_TO_SIGN.reject(
+        } catch (e: Exception) {
+          var me = ModuleException.UNKNOWN_EXCEPTION
+          when(e) {
+            is NoSuchAlgorithmException -> {
+              me = ModuleException.INVALID_SIGN_ALGORITHM
+            }
+            is InvalidKeyException -> {
+              me = ModuleException.WRONG_KEY_CONFIGURATION
+            }
+            is SignatureException -> {
+              me = ModuleException.UNABLE_TO_SIGN
+            }
+          }
+          return me.reject(
             promise,
             Pair(ERROR_USER_INFO_KEY, e.message ?: "")
           )
