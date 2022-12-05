@@ -1,7 +1,7 @@
 import * as React from 'react';
 import ProgressBar from 'react-native-progress/Bar';
 
-import { SafeAreaView, View, Text, TextInput, Button } from 'react-native';
+import { SafeAreaView, View, Text, TextInput, Button, ScrollView } from 'react-native';
 import {
   deletePublicKey,
   generate,
@@ -18,6 +18,7 @@ export default function App() {
       <View
         style={{
           flex: 1,
+          padding: 16
         }}
       >
         <Text style={{ fontWeight: 'bold', height: 'auto' }}>Ket tag: </Text>
@@ -108,16 +109,21 @@ export default function App() {
             }}
           />
         </View>
-        <Text
+        <ScrollView
           style={{
-            marginVertical: 16,
             flexGrow: 1,
             padding: 8,
-            backgroundColor: '#CCDDCC',
+            backgroundColor: '#DDDDDD',
           }}
         >
-          {logText}
-        </Text>
+          <Text
+            style={{
+              marginVertical: 4
+            }}
+          >
+            {logText}
+          </Text>
+        </ScrollView>
         <ProgressBar style={{ margin: 16 }} indeterminate={true} />
       </View>
     </SafeAreaView>
