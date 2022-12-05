@@ -239,11 +239,14 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   private fun ensureKeyHardwareBacked(keyTag: String) {
     try {
       getKeyPair(keyTag)?.private?.let {
-        isKeyHardwareBacked(it)
+        if (isKeyHardwareBacked(it)) {
+          return
+        }
       }
     } catch (e: Exception) {
       throw KeyNotHardwareBacked(e.message)
     }
+    throw KeyNotHardwareBacked("")
   }
 
   @RequiresApi(Build.VERSION_CODES.M)
