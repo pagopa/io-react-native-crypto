@@ -17,7 +17,7 @@ import java.security.spec.RSAKeyGenParameterSpec
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
-  var threadHanle: Thread? = null
+  var threadHandle: Thread? = null
 
   private val keyStore: KeyStore? by lazy {
     try {
@@ -34,17 +34,27 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
-  fun generate(keyTag: String, promise: Promise) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      generate(KeyConfig.EC_P_256, keyTag, promise)
-    } else {
-      return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+  fun generate(
+    keyTag: String,
+    promise: Promise
+  ) {
+    threadHandle = Thread {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        generate(KeyConfig.EC_P_256, true, keyTag, promise)
+      } else {
+        ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+      }
+      return@Thread
     }
+    threadHandle?.start()
   }
 
   @RequiresApi(Build.VERSION_CODES.M)
   private fun generate(
-    keyConfig: KeyConfig, keyTag: String, promise: Promise
+    keyConfig: KeyConfig,
+    strongBox: Boolean,
+    keyTag: String,
+    promise: Promise
   ) {
     // https://reactnative.dev/docs/native-modules-android#threading
     //
@@ -55,99 +65,96 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     // If a blocking call is required, the heavy work
     // should be dispatched to an internally managed worker thread,
     // and any callbacks distributed from there.
-    threadHanle = Thread {
-      try {
-        // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
-        // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called
-        if (keyExists(keyTag)) {
-          ModuleException.KEY_ALREADY_EXISTS.reject(
-            promise, Pair("keyTag", keyTag)
-          )
-          threadHanle = null
-          return@Thread
-        }
-        val keySpecGenerator = KeyGenParameterSpec.Builder(
-          keyTag, PURPOSE_SIGN
-        ).apply {
-          keyConfig.algorithmParam?.let {
-            if (keyConfig == KeyConfig.EC_P_256) {
-              setAlgorithmParameterSpec(ECGenParameterSpec(it))
-            } else {
-              setAlgorithmParameterSpec(
-                RSAKeyGenParameterSpec(
-                  // RSA key size must be >= 512 and <= 8192
-                  it.toInt(),
-                  RSAKeyGenParameterSpec.F4 // 65537
-                )
-              )
-            }
-          }
-          setDigests(
-            DIGEST_SHA256,
-          )
-          if (keyConfig == KeyConfig.RSA) {
-            setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
-          }
-        }
-        val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
-        val keyPairGenerator = KeyPairGenerator.getInstance(
-          keyConfig.algorithm,
-          KEYSTORE_PROVIDER
-        ).also { it.initialize(keySpec) }
-        val keyPair = keyPairGenerator.generateKeyPair()
-        if (!isKeyHardwareBacked(keyTag)) {
-          if (deleteKey(keyTag)) {
-            if (keyConfig == KeyConfig.EC_P_256) {
-              generate(KeyConfig.RSA, keyTag, promise)
-              threadHanle = null
-              return@Thread
-            } else {
-              ModuleException.UNSUPPORTED_DEVICE.reject(promise)
-              threadHanle = null
-              return@Thread
-            }
-          } else {
-            ModuleException.PUBLIC_KEY_DELETION_ERROR.reject(promise)
-            threadHanle = null
-            return@Thread
-          }
-        }
-        val publicKey = keyPair.public
-        publicKeyToJwk(publicKey)?.let {
-          promise.resolve(it)
-          threadHanle = null
-          return@Thread
-        }
-        ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
-        threadHanle = null
-        return@Thread
-      } catch (e: NoSuchAlgorithmException) {
-        /*
-        TODO: when (ex) {
-            is KeyTooLongException [...] ??? Could be feasible
-         */
-        ModuleException.WRONG_KEY_CONFIGURATION.reject(
-          promise,
-          Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+    try {
+      // https://developer.android.com/reference/java/security/KeyPairGenerator#generateKeyPair()
+      // KeyPairGenerator.generateKeyPair will generate a new key pair every time it is called
+      if (keyExists(keyTag)) {
+        ModuleException.KEY_ALREADY_EXISTS.reject(
+          promise, Pair("keyTag", keyTag)
         )
-        return@Thread
-      } catch (e: InvalidAlgorithmParameterException) {
-        ModuleException.WRONG_KEY_CONFIGURATION.reject(
-          promise,
-          Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-        return@Thread
-      } catch (e: NoSuchProviderException) {
-        ModuleException.UNSUPPORTED_DEVICE.reject(
-          promise,
-          Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-        return@Thread
+        return
       }
+      val keySpecGenerator = KeyGenParameterSpec.Builder(
+        keyTag, PURPOSE_SIGN
+      ).apply {
+        keyConfig.algorithmParam?.let {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            setIsStrongBoxBacked(strongBox)
+          }
+          if (keyConfig == KeyConfig.EC_P_256) {
+            setAlgorithmParameterSpec(ECGenParameterSpec(it))
+          } else {
+            setAlgorithmParameterSpec(
+              RSAKeyGenParameterSpec(
+                // RSA key size must be >= 512 and <= 8192
+                it.toInt(),
+                RSAKeyGenParameterSpec.F4 // 65537
+              )
+            )
+          }
+        }
+        setDigests(
+          DIGEST_SHA256,
+        )
+        if (keyConfig == KeyConfig.RSA) {
+          // or SIGNATURE_PADDING_RSA_PKCS1
+          // https://crypto.stackexchange.com/questions/48407/should-i-be-using-pkcs1-v1-5-or-pss-for-rsa-signatures
+          setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
+        }
+      }
+      val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
+      val keyPairGenerator = KeyPairGenerator.getInstance(
+        keyConfig.algorithm,
+        KEYSTORE_PROVIDER
+      ).also { it.initialize(keySpec) }
+      val keyPair = keyPairGenerator.generateKeyPair()
+      ensureKeyHardwareBacked(keyTag)
+      val publicKey = keyPair.public
+      publicKeyToJwk(publicKey)?.let {
+        promise.resolve(it)
+        return
+      }
+      ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+      return
+    } catch (e: Exception) {
+      deleteKey(keyTag)
+      val strongBoxApiAvailable = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+      if (keyConfig == KeyConfig.EC_P_256 && strongBox) {
+        generate(keyConfig, false, keyTag, promise)
+        return
+      }
+      if (keyConfig == KeyConfig.EC_P_256) {
+        generate(KeyConfig.RSA, strongBoxApiAvailable, keyTag, promise)
+        return
+      }
+      if (keyConfig == KeyConfig.RSA && strongBox) {
+        generate(KeyConfig.RSA, false, keyTag, promise)
+        return
+      }
+      var me: ModuleException = ModuleException.UNKNOWN_EXCEPTION
+      when (e) {
+        is NoSuchAlgorithmException -> {
+          me = ModuleException.WRONG_KEY_CONFIGURATION
+        }
+        is InvalidAlgorithmParameterException -> {
+          me = ModuleException.WRONG_KEY_CONFIGURATION
+        }
+        is NoSuchProviderException -> {
+          me = ModuleException.UNSUPPORTED_DEVICE
+        }
+      }
+
+      me.reject(
+        promise,
+        Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+      )
+      return
+    } finally {
+      threadHandle = null
     }
-    threadHanle?.start()
   }
 
+  @RequiresApi(Build.VERSION_CODES.M)
   private fun keyExists(keyTag: String) = getKeyPair(keyTag) != null
 
   /**
@@ -228,11 +235,15 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   }
 
   @RequiresApi(Build.VERSION_CODES.M)
-  private fun isKeyHardwareBacked(keyTag: String): Boolean {
-    getKeyPair(keyTag)?.private?.let {
-      return isKeyHardwareBacked(it)
+  @Throws(KeyNotHardwareBacked::class)
+  private fun ensureKeyHardwareBacked(keyTag: String) {
+    try {
+      getKeyPair(keyTag)?.private?.let {
+        isKeyHardwareBacked(it)
+      }
+    } catch (e: Exception) {
+      throw KeyNotHardwareBacked(e.message)
     }
-    return false
   }
 
   @RequiresApi(Build.VERSION_CODES.M)
@@ -242,9 +253,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         key.algorithm, KEYSTORE_PROVIDER
       )
       val keyInfo = factory.getKeySpec(key, KeyInfo::class.java)
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         // https://developer.android.com/reference/android/security/keystore/KeyProperties
-        return keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT
+        keyInfo.securityLevel == SECURITY_LEVEL_TRUSTED_ENVIRONMENT
           || keyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX
           || keyInfo.securityLevel == SECURITY_LEVEL_UNKNOWN_SECURE
       } else {
@@ -264,6 +275,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  @RequiresApi(Build.VERSION_CODES.M)
   private fun deleteKey(keyTag: String, promise: Promise? = null): Boolean {
     getKeyPair(keyTag)?.let {
       try {
@@ -379,13 +391,18 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     return signatureEngine.sign()
   }
 
+  @RequiresApi(Build.VERSION_CODES.M)
   private fun getKeyPair(keyTag: String): KeyPair? {
     try {
       keyStore?.let {
         val privateKey = it.getKey(keyTag, null) as? PrivateKey
         privateKey?.also { _ ->
-          val publicKey = it.getCertificate(keyTag).publicKey
-          return KeyPair(publicKey, privateKey)
+          return if (isKeyHardwareBacked(privateKey)) {
+            val publicKey = it.getCertificate(keyTag).publicKey
+            KeyPair(publicKey, privateKey)
+          } else {
+            null
+          }
         }
       }
       return null
@@ -422,6 +439,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         jwkCrv = null,
         algorithm = KEY_ALGORITHM_RSA,
         algorithmParam = "2048",
+        // https://www.rfc-editor.org/rfc/rfc3447
         signature = "SHA256withRSA/PSS",
       )
     }
@@ -448,7 +466,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       KEYSTORE_LOAD_FAILED(Exception("KEYSTORE_LOAD_FAILED")),
       UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")),
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
-      INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM"));
+      INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
+      UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
 
       fun reject(
         promise: Promise, vararg args: Pair<String, String>
@@ -470,3 +489,5 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 fun ByteArray.base64NoWrap(): String {
   return Base64.encodeToString(this, Base64.NO_WRAP)
 }
+
+class KeyNotHardwareBacked(message: String?) : Exception(message)
