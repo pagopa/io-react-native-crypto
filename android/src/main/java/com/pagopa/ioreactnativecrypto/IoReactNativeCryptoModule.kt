@@ -38,15 +38,15 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     keyTag: String,
     promise: Promise
   ) {
-    threadHandle = Thread {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      threadHandle = Thread {
         generate(KeyConfig.EC_P_256, true, keyTag, promise)
-      } else {
-        ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+        return@Thread
       }
-      return@Thread
+      threadHandle?.start()
+    } else {
+      ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
-    threadHandle?.start()
   }
 
   @RequiresApi(Build.VERSION_CODES.M)
@@ -344,22 +344,27 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   @ReactMethod
   fun signUTF8Text(message: String, keyTag: String, promise: Promise) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      getKeyPair(keyTag)?.private?.let {
+      threadHandle = Thread {
         try {
-          // Unlike iOS this always returns a byte array.
-          val messageDataBytes = message.toByteArray(charset = Charsets.UTF_8)
-          val signAlgorithm = getSignAlgorithm(it)
-          val signature = signData(
-            messageDataBytes, it, signAlgorithm
-          )
-          // `encodeToString` uses "US-ASCII" under the hood
-          // which is equivalent to UTF-8 for the first 256 bytes.
-          // Base64 does not generate bytes outside this range.
-          val signatureBase64 = Base64.encodeToString(signature, Base64.NO_WRAP)
-          return promise.resolve(signatureBase64)
+          getKeyPair(keyTag)?.private?.let {
+            // Unlike iOS this always returns a byte array.
+            val messageDataBytes = message.toByteArray(charset = Charsets.UTF_8)
+            val signAlgorithm = getSignAlgorithm(it)
+            val signature = signData(
+              messageDataBytes, it, signAlgorithm
+            )
+            // `encodeToString` uses "US-ASCII" under the hood
+            // which is equivalent to UTF-8 for the first 256 bytes.
+            // Base64 does not generate bytes outside this range.
+            val signatureBase64 = Base64.encodeToString(signature, Base64.NO_WRAP)
+            promise.resolve(signatureBase64)
+            return@Thread
+          }
+          ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
+          return@Thread
         } catch (e: Exception) {
           var me = ModuleException.UNKNOWN_EXCEPTION
-          when(e) {
+          when (e) {
             is NoSuchAlgorithmException -> {
               me = ModuleException.INVALID_SIGN_ALGORITHM
             }
@@ -370,18 +375,22 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
               me = ModuleException.UNABLE_TO_SIGN
             }
           }
-          return me.reject(
+          me.reject(
             promise,
             Pair(ERROR_USER_INFO_KEY, e.message ?: "")
           )
+          return@Thread
         } catch (e: AssertionError) {
-          return ModuleException.INVALID_UTF8_ENCODING.reject(
+          ModuleException.INVALID_UTF8_ENCODING.reject(
             promise,
             Pair(ERROR_USER_INFO_KEY, e.message ?: "")
           )
+          return@Thread
+        } finally {
+          threadHandle = null
         }
       }
-      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
+      threadHandle?.start()
     } else {
       ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
