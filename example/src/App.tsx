@@ -14,7 +14,7 @@ export default function App() {
   const [keyTag, setKeyTag] = React.useState<string>('key');
 
   return (
-    <SafeAreaView style={{ flex: 1, padding: 20, backgroundColor: '#ccc' }}>
+    <SafeAreaView style={{ flex: 1, padding: 20 }}>
       <View
         style={{
           flex: 1,
@@ -42,7 +42,6 @@ export default function App() {
         >
           <Button
             title="sign"
-            color="#FF0F0C"
             onPress={() => {
               sign("Ceci n'est pas une nonce", keyTag)
                 .then((value) => {
@@ -57,7 +56,6 @@ export default function App() {
           />
           <Button
             title="get"
-            color="#FF0000"
             onPress={() => {
               getPublicKey(keyTag)
                 .then((value) => {
@@ -72,7 +70,6 @@ export default function App() {
           />
           <Button
             title="create"
-            color="#FF0CCF"
             onPress={() => {
               generate(keyTag)
                 .then((value) => {
@@ -95,7 +92,6 @@ export default function App() {
           />
           <Button
             title="delete"
-            color="#0000FF"
             onPress={() => {
               deletePublicKey(keyTag)
                 .then((value) => {
@@ -113,18 +109,21 @@ export default function App() {
           style={{
             flexGrow: 1,
             padding: 8,
-            backgroundColor: '#DDDDDD',
+            marginTop: 16,
+            borderRadius: 10,
+            backgroundColor: 'gray',
           }}
         >
           <Text
             style={{
-              marginVertical: 4
+              marginVertical: 4,
+              color: '#FFF'
             }}
           >
             {logText}
           </Text>
         </ScrollView>
-        <ProgressBar style={{ margin: 16 }} indeterminate={true} />
+        <ProgressBar style={{ marginTop: 16 }} indeterminate={true} />
       </View>
     </SafeAreaView>
   );
