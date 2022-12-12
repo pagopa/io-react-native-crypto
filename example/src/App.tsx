@@ -3,6 +3,7 @@ import ProgressBar from 'react-native-progress/Bar';
 
 import { SafeAreaView, View, Text, TextInput, Button, ScrollView } from 'react-native';
 import {
+  CryptoErrorCodes,
   deletePublicKey,
   generate,
   getPublicKey,
@@ -85,6 +86,9 @@ export default function App() {
                       "code":"UNSUPPORTED_DEVICE"
                     } 
                    */
+                  if ((reason.message as CryptoErrorCodes) === "KEY_ALREADY_EXISTS") {
+                    console.log("The key is already existing!");
+                  }
                   console.log(reason);
                   setLogText(JSON.stringify(reason));
                 });

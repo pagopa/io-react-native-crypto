@@ -11,14 +11,38 @@ declare module 'io-react-native-crypto' {
   // function to delete a key pair on the device
   export function deleteKey(keyTag: string): Promise<boolean>;
 
-  type ECKey = {
+  type CryptoErrorCodesIOS = "KEY_ALREADY_EXISTS"
+    | "UNSUPPORTED_DEVICE"
+    | "WRONG_KEY_CONFIGURATION"
+    | "PUBLIC_KEY_NOT_FOUND"
+    | "PUBLIC_KEY_DELETION_ERROR"
+    | "KEYCHAIN_LOAD_FAILED"
+    | "INVALID_UTF8_ENCODING"
+    | "UNABLE_TO_SIGN"
+    | "THREADING_ERROR"
+
+  type CryptoErrorCodesAndroid = "KEY_ALREADY_EXISTS"
+    | "UNSUPPORTED_DEVICE"
+    | "WRONG_KEY_CONFIGURATION"
+    | "PUBLIC_KEY_NOT_FOUND"
+    | "PUBLIC_KEY_DELETION_ERROR"
+    | "API_LEVEL_NOT_SUPPORTED"
+    | "KEYSTORE_LOAD_FAILED"
+    | "UNABLE_TO_SIGN"
+    | "INVALID_UTF8_ENCODING"
+    | "INVALID_SIGN_ALGORITHM"
+    | "UNKNOWN_EXCEPTION"
+
+  export type CryptoErrorCodes = CryptoErrorCodesAndroid | CryptoErrorCodesIOS
+
+  export type ECKey = {
     kty: 'EC';
     crv: string;
     x: string;
     y: string;
   };
 
-  type RSAKey = {
+  export type RSAKey = {
     kty: 'RSA';
     alg: string;
     e: string;
