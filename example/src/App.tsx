@@ -1,9 +1,15 @@
 import * as React from 'react';
-import ProgressBar from 'react-native-progress/Bar';
 
-import { SafeAreaView, View, Text, TextInput, Button, ScrollView } from 'react-native';
 import {
-  CryptoErrorCodes,
+  SafeAreaView,
+  View,
+  Text,
+  TextInput,
+  Button,
+  ScrollView,
+} from 'react-native';
+import {
+  CryptoError,
   deletePublicKey,
   generate,
   getPublicKey,
@@ -19,7 +25,7 @@ export default function App() {
       <View
         style={{
           flex: 1,
-          padding: 16
+          padding: 16,
         }}
       >
         <Text style={{ fontWeight: 'bold', height: 'auto' }}>Ket tag: </Text>
@@ -49,9 +55,9 @@ export default function App() {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));
                 })
-                .catch((reason) => {
+                .catch((reason: CryptoError) => {
                   console.log(reason);
-                  setLogText(JSON.stringify(reason));
+                  setLogText(`${reason}`);
                 });
             }}
           />
@@ -63,9 +69,9 @@ export default function App() {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));
                 })
-                .catch((reason) => {
+                .catch((reason: CryptoError) => {
                   console.log(reason);
-                  setLogText(JSON.stringify(reason));
+                  setLogText(`${reason}`);
                 });
             }}
           />
@@ -77,20 +83,9 @@ export default function App() {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));
                 })
-                .catch((reason) => {
-                  /*
-                    {
-                      "nativeStackAndroid":[],
-                      "userInfo":{},"AQAB",
-                      "message":"Error not specified.",
-                      "code":"UNSUPPORTED_DEVICE"
-                    } 
-                   */
-                  if ((reason.message as CryptoErrorCodes) === "KEY_ALREADY_EXISTS") {
-                    console.log("The key is already existing!");
-                  }
+                .catch((reason: CryptoError) => {
                   console.log(reason);
-                  setLogText(JSON.stringify(reason));
+                  setLogText(`${reason}`);
                 });
             }}
           />
@@ -98,13 +93,13 @@ export default function App() {
             title="delete"
             onPress={() => {
               deletePublicKey(keyTag)
-                .then((value) => {
-                  console.log(`${JSON.stringify(value)}`);
-                  setLogText(JSON.stringify(value));
+                .then(() => {
+                  console.log('true');
+                  setLogText('true');
                 })
-                .catch((reason) => {
+                .catch((reason: CryptoError) => {
                   console.log(reason);
-                  setLogText(JSON.stringify(reason));
+                  setLogText(`${reason}`);
                 });
             }}
           />
@@ -121,13 +116,12 @@ export default function App() {
           <Text
             style={{
               marginVertical: 4,
-              color: '#FFF'
+              color: '#FFF',
             }}
           >
             {logText}
           </Text>
         </ScrollView>
-        <ProgressBar style={{ marginTop: 16 }} indeterminate={true} />
       </View>
     </SafeAreaView>
   );
