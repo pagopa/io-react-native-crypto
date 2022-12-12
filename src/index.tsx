@@ -1,16 +1,17 @@
 import { NativeModules, Platform } from 'react-native';
 
 type ECKey = {
-  alg: 'EC';
+  kty: 'EC';
   crv: string;
   x: string;
   y: string;
 };
 
 type RSAKey = {
-  alg: 'RSA';
-  mod: string;
-  exp: string;
+  kty: 'RSA';
+  alg: string;
+  e: string;
+  n: string;
 };
 
 export type PublicKey = ECKey | RSAKey;
@@ -23,13 +24,13 @@ const LINKING_ERROR =
 const IoReactNativeCrypto = NativeModules.IoReactNativeCrypto
   ? NativeModules.IoReactNativeCrypto
   : new Proxy(
-      {},
-      {
-        get() {
-          throw new Error(LINKING_ERROR);
-        },
-      }
-    );
+    {},
+    {
+      get() {
+        throw new Error(LINKING_ERROR);
+      },
+    }
+  );
 
 export function getPublicKey(keyTag: string): Promise<PublicKey> {
   return IoReactNativeCrypto.getPublicKey(keyTag);

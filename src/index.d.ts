@@ -12,16 +12,17 @@ declare module 'io-react-native-crypto' {
   export function deleteKey(keyTag: string): Promise<boolean>;
 
   type ECKey = {
-    alg: 'EC';
+    kty: 'EC';
     crv: string;
     x: string;
     y: string;
   };
 
   type RSAKey = {
-    alg: 'RSA';
-    mod: string;
-    exp: string;
+    kty: 'RSA';
+    alg: string;
+    e: string;
+    n: string;
   };
 
   export type PublicKey = ECKey | RSAKey;
