@@ -1,7 +1,15 @@
 import * as React from 'react';
 
-import { SafeAreaView, View, Text, TextInput, Button } from 'react-native';
 import {
+  SafeAreaView,
+  View,
+  Text,
+  TextInput,
+  Button,
+  ScrollView,
+} from 'react-native';
+import {
+  CryptoError,
   deletePublicKey,
   generate,
   getPublicKey,
@@ -11,12 +19,13 @@ import {
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
   const [keyTag, setKeyTag] = React.useState<string>('key');
-  
+
   return (
-    <SafeAreaView style={{ flex: 1, padding: 20, backgroundColor: '#ccc' }}>
+    <SafeAreaView style={{ flex: 1, padding: 20 }}>
       <View
         style={{
           flex: 1,
+          padding: 16,
         }}
       >
         <Text style={{ fontWeight: 'bold', height: 'auto' }}>Ket tag: </Text>
@@ -40,83 +49,79 @@ export default function App() {
         >
           <Button
             title="sign"
-            color="#FF0F0C"
             onPress={() => {
-              sign('', keyTag)
+              sign("Ceci n'est pas une nonce", keyTag)
                 .then((value) => {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));
                 })
-                .catch((reason) => {
+                .catch((reason: CryptoError) => {
                   console.log(reason);
-                  setLogText(JSON.stringify(reason));
+                  setLogText(`${reason}`);
                 });
             }}
           />
           <Button
             title="get"
-            color="#FF0000"
             onPress={() => {
               getPublicKey(keyTag)
                 .then((value) => {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));
                 })
-                .catch((reason) => {
+                .catch((reason: CryptoError) => {
                   console.log(reason);
-                  setLogText(JSON.stringify(reason));
+                  setLogText(`${reason}`);
                 });
             }}
           />
           <Button
             title="create"
-            color="#FF0CCF"
             onPress={() => {
               generate(keyTag)
                 .then((value) => {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));
                 })
-                .catch((reason) => {
-                  /*
-                    {
-                      "nativeStackAndroid":[],
-                      "userInfo":{},"AQAB",
-                      "message":"Error not specified.",
-                      "code":"UNSUPPORTED_DEVICE"
-                    } 
-                   */
+                .catch((reason: CryptoError) => {
                   console.log(reason);
-                  setLogText(JSON.stringify(reason));
+                  setLogText(`${reason}`);
                 });
             }}
           />
           <Button
             title="delete"
-            color="#0000FF"
             onPress={() => {
               deletePublicKey(keyTag)
-                .then((value) => {
-                  console.log(`${JSON.stringify(value)}`);
-                  setLogText(JSON.stringify(value));
+                .then(() => {
+                  console.log('true');
+                  setLogText('true');
                 })
-                .catch((reason) => {
+                .catch((reason: CryptoError) => {
                   console.log(reason);
-                  setLogText(JSON.stringify(reason));
+                  setLogText(`${reason}`);
                 });
             }}
           />
         </View>
-        <Text
+        <ScrollView
           style={{
-            marginVertical: 16,
             flexGrow: 1,
             padding: 8,
-            backgroundColor: '#CCDDCC',
+            marginTop: 16,
+            borderRadius: 10,
+            backgroundColor: 'gray',
           }}
         >
-          {logText}
-        </Text>
+          <Text
+            style={{
+              marginVertical: 4,
+              color: '#FFF',
+            }}
+          >
+            {logText}
+          </Text>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
