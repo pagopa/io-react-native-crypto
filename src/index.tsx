@@ -137,7 +137,7 @@ export function generate(keyTag: string): Promise<PublicKey> {
  * @param keyTag - the string key tag used to reference the key to delete from the key store.
  * @returns a promise that resolves when the key is successfully deleted.
  */
-export function deletePublicKey(keyTag: string): Promise<void> {
+export function deleteKey(keyTag: string): Promise<void> {
   return IoReactNativeCrypto.deletePublicKey(keyTag);
 }
 
