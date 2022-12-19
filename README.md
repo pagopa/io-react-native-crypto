@@ -1,6 +1,6 @@
 # @pagopa/io-react-native-crypto
 
-Module to generate and sign with crypto keys backed on device security chardware on react-native platform.
+Module to generate and sign with crypto keys backed on device security hardware on react-native platform.
 
 ## Installation
 
