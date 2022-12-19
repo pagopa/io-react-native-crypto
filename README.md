@@ -5,7 +5,7 @@ Module to generate and sign with crypto keys backed on device security hardware 
 ## Installation
 
 ```sh
-yarn add pagopa/io-react-native-crypto
+yarn add @pagopa/io-react-native-crypto
 ```
 
 ## Usage
