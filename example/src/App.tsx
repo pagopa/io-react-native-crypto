@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import {
   CryptoError,
-  deletePublicKey,
+  deleteKey,
   generate,
   getPublicKey,
   sign,
@@ -92,7 +92,7 @@ export default function App() {
           <Button
             title="delete"
             onPress={() => {
-              deletePublicKey(keyTag)
+              deleteKey(keyTag)
                 .then(() => {
                   console.log('true');
                   setLogText('true');
