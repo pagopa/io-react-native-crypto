@@ -17,7 +17,11 @@ import { generate } from '@pagopa/io-react-native-crypto';
 
 // ...
 
-const result = await generate('PERSONAL_KEYTAG');
+try {
+  const result = await generate('PERSONAL_KEYTAG');
+} catch (e) {
+  const {message, userInfo} = e as CryptoError;
+}
 // result is the JWK of the generated public key
 ```
 
@@ -28,7 +32,11 @@ import { sign } from '@pagopa/io-react-native-crypto';
 
 // ...
 
-const result = await sign('A valid message to sign', 'PERSONAL_KEYTAG');
+try {
+  const result = await sign('A valid message to sign', 'PERSONAL_KEYTAG');
+} catch (e) {
+  const {message, userInfo} = e as CryptoError;
+}
 // result is the Base64 string representation of the signature.
 ```
 
@@ -39,7 +47,11 @@ import { getPublicKey } from '@pagopa/io-react-native-crypto';
 
 // ...
 
-const result = await getPublicKey('PERSONAL_KEYTAG');
+try {
+  const result = await getPublicKey('PERSONAL_KEYTAG');
+} catch (e) {
+  const {message, userInfo} = e as CryptoError;
+}
 // result is the JWK of the generated public key, error if no key has been yet generated
 ```
 
@@ -50,7 +62,11 @@ import { deleteKey } from '@pagopa/io-react-native-crypto';
 
 // ...
 
-await deleteKey('PERSONAL_KEYTAG');
+try {
+  await deleteKey('PERSONAL_KEYTAG');
+} catch (e) {
+  const {message, userInfo} = e as CryptoError;
+}
 // no result is provided, error if no key has been found for the specified keytag
 ```
 
@@ -72,7 +88,7 @@ await deleteKey('PERSONAL_KEYTAG');
 |  WRONG_KEY_CONFIGURATION  | iOS/Android | The key configuration has not been correctly defined                    |
 |   PUBLIC_KEY_NOT_FOUND    | iOS/Android | The public key is missing for a specific keyTag                         |
 | PUBLIC_KEY_DELETION_ERROR | iOS/Android | An error occurred while deleting the public key                         |
-|  API_LEVEL_NOT_SUPPORTED  |   Android   | The current Api Level doesn't support the hardware baked key generation |
+|  API_LEVEL_NOT_SUPPORTED  |   Android   | The current API Level doesn't support the hardware baked key generation |
 |   KEYSTORE_LOAD_FAILED    |   Android   | It was not possible to load or store data on the Keystore               |
 |   KEYCHAIN_LOAD_FAILED    |     iOS     | It was not possible to load or store data on the Keychain               |
 |      UNABLE_TO_SIGN       | iOS/Android | It was not possible to sign the given string                            |
