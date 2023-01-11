@@ -32,6 +32,7 @@ class IoReactNativeCrypto: NSObject {
         privateKey = try self.generatePrivateKey(keyTag: keyTag)
       } catch {
         ME.wrongKeyConfiguration.reject(reject: reject)
+        return
       }
       
       guard let privateKey = privateKey,
