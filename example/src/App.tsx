@@ -14,7 +14,7 @@ import {
   generate,
   getPublicKey,
   sign,
-} from '@shadowsheep1/io-react-native-crypto';
+} from '@shadowsheep/io-react-native-crypto';
 
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();

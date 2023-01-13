@@ -1,11 +1,11 @@
-# @shadowsheep1/io-react-native-crypto
+# @shadowsheep/io-react-native-crypto
 
 Module to generate and sign with crypto keys backed on device security hardware on react-native platform.
 
 ## Installation
 
 ```sh
-yarn add @shadowsheep1/io-react-native-crypto
+yarn add @shadowsheep/io-react-native-crypto
 ```
 
 ## Usage
@@ -13,7 +13,7 @@ yarn add @shadowsheep1/io-react-native-crypto
 ### Generate a key
 
 ```js
-import { generate } from '@shadowsheep1/io-react-native-crypto';
+import { generate } from '@shadowsheep/io-react-native-crypto';
 
 // ...
 
@@ -28,7 +28,7 @@ try {
 ### Sign a message
 
 ```js
-import { sign } from '@shadowsheep1/io-react-native-crypto';
+import { sign } from '@shadowsheep/io-react-native-crypto';
 
 // ...
 
@@ -43,7 +43,7 @@ try {
 ### Retrieve the public key
 
 ```js
-import { getPublicKey } from '@shadowsheep1/io-react-native-crypto';
+import { getPublicKey } from '@shadowsheep/io-react-native-crypto';
 
 // ...
 
@@ -58,7 +58,7 @@ try {
 ### Delete the key
 
 ```js
-import { deleteKey } from '@shadowsheep1/io-react-native-crypto';
+import { deleteKey } from '@shadowsheep/io-react-native-crypto';
 
 // ...
 

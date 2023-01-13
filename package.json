@@ -1,5 +1,5 @@
 {
-  "name": "@shadowsheep1/io-react-native-crypto",
+  "name": "@shadowsheep/io-react-native-crypto",
   "version": "0.2.0",
   "description": "test",
   "main": "lib/commonjs/index",
@@ -41,13 +41,13 @@
     "ios",
     "android"
   ],
-  "repository": "https://github.com/shadowsheep1/io-react-native-crypto",
+  "repository": "https://github.com/shadowsheep/io-react-native-crypto",
   "author": "PagoPa (https://github.com/pagopa)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/shadowsheep1/io-react-native-crypto/issues"
+    "url": "https://github.com/shadowsheep/io-react-native-crypto/issues"
   },
-  "homepage": "https://github.com/shadowsheep1/io-react-native-crypto#readme",
+  "homepage": "https://github.com/shadowsheep/io-react-native-crypto#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
