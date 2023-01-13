@@ -53,7 +53,7 @@ Remember to add tests for your change if possible. Run the unit tests by:
 yarn test
 ```
 
-To edit the Objective-C or Swift files, open `example/ios/IoReactNativeCryptoExample.xcworkspace` in XCode and find the source files at `Pods > Development Pods > @pagopa/io-react-native-crypto`.
+To edit the Objective-C or Swift files, open `example/ios/IoReactNativeCryptoExample.xcworkspace` in XCode and find the source files at `Pods > Development Pods > @shadowsheep1/io-react-native-crypto`.
 
 To edit the Java or Kotlin files, open `example/android` in Android studio and find the source files at `pagopa-io-react-native-crypto` under `Android`.
 

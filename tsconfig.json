@@ -2,7 +2,7 @@
   "compilerOptions": {
     "baseUrl": "./",
     "paths": {
-      "@pagopa/io-react-native-crypto": ["./src/index"]
+      "@shadowsheep1/io-react-native-crypto": ["./src/index"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
