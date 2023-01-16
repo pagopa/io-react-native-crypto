@@ -158,7 +158,7 @@
     ]
   },
   "auto-changelog": {
-    "issuePattern": "\\[(\\d+)\\]",
+    "issuePattern": "\\[([A-Z]+-d+)\\]",
     "issueUrl": "https://pagopa.atlassian.net/browse/{id}",
     "breakingPattern": "BREAKING CHANGE:"
   }
