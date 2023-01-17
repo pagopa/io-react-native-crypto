@@ -1,7 +1,7 @@
 {
   "name": "@shadowsheep/io-react-native-crypto",
   "version": "0.2.2",
-  "description": "test",
+  "description": "test package",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
   "types": "lib/typescript/index.d.ts",
