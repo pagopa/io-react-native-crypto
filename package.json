@@ -151,5 +151,10 @@
         }
       ]
     ]
+  },
+  "auto-changelog": {
+    "issuePattern": "[A-Z]+-\\d+",
+    "issueUrl": "https://shadowsheep.atlassian.net/browse/{id}",
+    "breakingPattern": "BREAKING CHANGE:"
   }
 }
