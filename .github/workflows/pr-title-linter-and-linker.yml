@@ -48,7 +48,7 @@ jobs:
 
           for ISSUE in "${ISSUES[@]}"
           do
-            JIRA_COMMENT_MARKDOWN+="$MARKDOWN_PREFIX [$ISSUE](https://pagopa.atlassian.net/browse/SRCTREE-6999$ISSUE) $MARKDOWN_CARRIAGE_RETURN"
+            JIRA_COMMENT_MARKDOWN+="$MARKDOWN_PREFIX [$ISSUE](https://pagopa.atlassian.net/browse/$ISSUE) $MARKDOWN_CARRIAGE_RETURN"
           done
 
           echo "JIRA_ISSUE=$JIRA_ISSUE" >> $GITHUB_ENV
