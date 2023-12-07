@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
 import android.util.Base64
+import android.util.Base64.DEFAULT
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import java.security.*
@@ -13,6 +14,7 @@ import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
+import com.nimbusds.jose.crypto.impl.ECDSA.transcodeSignatureToConcat
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -393,6 +395,18 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       threadHandle?.start()
     } else {
       ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+    }
+  }
+
+  @ReactMethod
+  fun unpackBerEncodedASN1(asn1Signature: String, coordinateOctetLength: Int, promise: Promise) {
+    try {
+      val decodedBytes = Base64.decode(asn1Signature, DEFAULT)
+      val transcoded = transcodeSignatureToConcat(decodedBytes, coordinateOctetLength)
+      val signature = Base64.encodeToString(transcoded, DEFAULT)
+      promise.resolve(signature)
+    } catch (ex: Exception) {
+      promise.reject(ex)
     }
   }
 
