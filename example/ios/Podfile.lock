@@ -76,7 +76,7 @@ PODS:
   - hermes-engine (0.70.6)
   - libevent (2.1.12)
   - OpenSSL-Universal (1.1.1100)
-  - pagopa-io-react-native-crypto (0.1.0):
+  - pagopa-io-react-native-crypto (0.2.3):
     - React-Core
   - RCT-Folly (2021.07.22.00):
     - boost
@@ -547,7 +547,7 @@ SPEC CHECKSUMS:
   hermes-engine: 2af7b7a59128f250adfd86f15aa1d5a2ecd39995
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
   OpenSSL-Universal: ebc357f1e6bc71fa463ccb2fe676756aff50e88c
-  pagopa-io-react-native-crypto: d81b6b4bd8ebb1322da4c602ac810d5e9d4eefb3
+  pagopa-io-react-native-crypto: 93f984df8711eb72f3fb030eca51be6268fc96d6
   RCT-Folly: 0080d0a6ebf2577475bda044aa59e2ca1f909cda
   RCTRequired: e1866f61af7049eb3d8e08e8b133abd38bc1ca7a
   RCTTypeSafety: 27c2ac1b00609a432ced1ae701247593f07f901e
@@ -579,6 +579,6 @@ SPEC CHECKSUMS:
   Yoga: 99caf8d5ab45e9d637ee6e0174ec16fbbb01bcfc
   YogaKit: f782866e155069a2cca2517aafea43200b01fd5a
 
-PODFILE CHECKSUM: ab76fae8c9b28c966eaeafd8e91a14523af363b0
+PODFILE CHECKSUM: 55d97f5e9a7cd8cf10959e75c5f6a23b8325a6b8
 
-COCOAPODS: 1.11.3
+COCOAPODS: 1.14.3
