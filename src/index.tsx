@@ -12,7 +12,8 @@ type CryptoErrorCodesIOS =
   | 'KEYCHAIN_LOAD_FAILED'
   | 'INVALID_UTF8_ENCODING'
   | 'UNABLE_TO_SIGN'
-  | 'THREADING_ERROR';
+  | 'THREADING_ERROR'
+  | 'UNPACKING_BER_ENCODED_ASN1_ERROR';
 
 /**
  * Error codes returned by the Android side.
@@ -28,7 +29,8 @@ type CryptoErrorCodesAndroid =
   | 'UNABLE_TO_SIGN'
   | 'INVALID_UTF8_ENCODING'
   | 'INVALID_SIGN_ALGORITHM'
-  | 'UNKNOWN_EXCEPTION';
+  | 'UNKNOWN_EXCEPTION'
+  | 'UNPACKING_BER_ENCODED_ASN1_ERROR';
 
 /**
  * All error codes that the module could return.
@@ -154,4 +156,18 @@ export function deleteKey(keyTag: string): Promise<void> {
  */
 export function sign(message: string, keyTag: string): Promise<string> {
   return IoReactNativeCrypto.signUTF8Text(message, keyTag);
+}
+
+/**
+ * This function unpacks the provided `signature` in its ASN1 representation.
+ *
+ * @param signature - the Base64 string representation of the signature.
+ * @param coordinateOctoLen - the length of the octet string representing the coordinates.
+ * @returns a promise that resolves to the ASN1 representation of the signature.
+ */
+export function unpackBerEncodedASN1(
+  signature: string,
+  coordinateOctoLen: number
+): Promise<string> {
+  return IoReactNativeCrypto.unpackBerEncodedASN1(signature, coordinateOctoLen);
 }

@@ -201,7 +201,7 @@ class IoReactNativeCrypto: NSObject {
     }
   }
 
-  @objc
+  @objc(unpackBerEncodedASN1:withCoordinateOctoLen:withResolver:withRejecter:)
   func unpackBerEncodedASN1(
     _ signature: String,
     coordinateOctetLength: Int,
