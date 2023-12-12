@@ -223,7 +223,8 @@ class IoReactNativeCrypto: NSObject {
        ))
     }
     catch {
-      reject("Error", "\(error)", error);
+      ME.unpackingBerEncodedASN1Error.reject(reject: reject)
+      return
     }
   }
 
@@ -342,28 +343,31 @@ class IoReactNativeCrypto: NSObject {
     case invalidUTF8Encoding = "INVALID_UTF8_ENCODING"
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
+    case unpackingBerEncodedASN1Error = "UNPACKING_BER_ENCODED_ASN1_ERROR"
     
     func error(userInfo: [String : Any]? = nil) -> NSError {
-      switch self {
-      case .keyAlreadyExists:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .unsupportedDevice:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .wrongKeyConfiguration:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .publicKeyNotFound:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .publicKeyDeletionError:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .keychainLoadFailed:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .invalidUTF8Encoding:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .unableToSign:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .threadingError:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      }
+        switch self {
+        case .keyAlreadyExists:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .unsupportedDevice:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .wrongKeyConfiguration:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .publicKeyNotFound:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .publicKeyDeletionError:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .keychainLoadFailed:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .invalidUTF8Encoding:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .unableToSign:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .threadingError:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .unpackingBerEncodedASN1Error:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        }
     }
     
     func reject(reject: RCTPromiseRejectBlock, _ moreUserInfo: (String, Any)...) {

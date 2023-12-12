@@ -406,7 +406,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       val signature = Base64.encodeToString(transcoded, DEFAULT)
       promise.resolve(signature)
     } catch (ex: Exception) {
-      promise.reject(ex)
+      ModuleException.UNPACKING_BER_ENCODED_ASN1_ERROR.reject(promise)
+      return
     }
   }
 
@@ -501,7 +502,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")),
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
-      UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
+      UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION")),
+      UNPACKING_BER_ENCODED_ASN1_ERROR(Exception("UNPACKING_BER_ENCODED_ASN1_ERROR"));
 
       fun reject(
         promise: Promise, vararg args: Pair<String, String>
