@@ -1,5 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
-
+import { getCoordinateOctetLength } from './utils/algorithms';
+import { getAlgFromKey } from './utils/algorithms';
 /**
  * Error codes returned by the iOS module.
  */
@@ -171,3 +172,5 @@ export function unpackBerEncodedASN1(
 ): Promise<string> {
   return IoReactNativeCrypto.unpackBerEncodedASN1(signature, coordinateOctoLen);
 }
+
+export { getCoordinateOctetLength, getAlgFromKey };

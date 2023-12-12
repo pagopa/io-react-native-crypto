@@ -14,6 +14,9 @@ import {
   generate,
   getPublicKey,
   sign,
+  unpackBerEncodedASN1,
+  getCoordinateOctetLength,
+  getAlgFromKey,
 } from '@pagopa/io-react-native-crypto';
 
 export default function App() {
@@ -54,6 +57,31 @@ export default function App() {
                 .then((value) => {
                   console.log(JSON.stringify(value));
                   setLogText(JSON.stringify(value));
+                })
+                .catch((reason: CryptoError) => {
+                  console.log(reason);
+                  setLogText(`${reason}`);
+                });
+            }}
+          />
+          <Button
+            title="unpack"
+            onPress={() => {
+              sign("Ceci n'est pas une nonce", keyTag)
+                .then(async (signed) => {
+                  const pbKey = await getPublicKey(keyTag);
+                  unpackBerEncodedASN1(
+                    signed,
+                    getCoordinateOctetLength(getAlgFromKey(pbKey))
+                  )
+                    .then((value) => {
+                      console.log(JSON.stringify(value));
+                      setLogText(JSON.stringify(value));
+                    })
+                    .catch((reason: CryptoError) => {
+                      console.log(reason);
+                      setLogText(`${reason}`);
+                    });
                 })
                 .catch((reason: CryptoError) => {
                   console.log(reason);
