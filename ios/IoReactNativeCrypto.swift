@@ -193,12 +193,10 @@ class IoReactNativeCrypto: NSObject {
         ME.threadingError.reject(reject: reject)
         return
       }
-      print(message)
       guard let messageData = message.data(using: .hexadecimal) else {
         ME.invalidUTF8Encoding.reject(reject: reject)
         return
       }
-      print(messageData)
       let key: SecKey?
       let status: OSStatus
       (key, status) = self.keyExists(keyTag: keyTag)
