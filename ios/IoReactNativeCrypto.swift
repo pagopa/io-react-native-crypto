@@ -1,3 +1,28 @@
+extension String {
+        enum ExtendedEncoding {
+            case hexadecimal
+        }
+
+        func data(using encoding:ExtendedEncoding) -> Data? {
+            let hexStr = self.dropFirst(self.hasPrefix("0x") ? 2 : 0)
+
+            guard hexStr.count % 2 == 0 else { return nil }
+
+            var newData = Data(capacity: hexStr.count/2)
+
+            var indexIsEven = true
+            for i in hexStr.indices {
+                if indexIsEven {
+                    let byteRange = i...hexStr.index(after: i)
+                    guard let byte = UInt8(hexStr[byteRange], radix: 16) else { return nil }
+                    newData.append(byte)
+                }
+                indexIsEven.toggle()
+            }
+            return newData
+        }
+    }
+
 @objc(IoReactNativeCrypto)
 class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
@@ -168,10 +193,12 @@ class IoReactNativeCrypto: NSObject {
         ME.threadingError.reject(reject: reject)
         return
       }
+      print(message)
       guard let messageData = message.data(using: .utf8) else {
         ME.invalidUTF8Encoding.reject(reject: reject)
         return
       }
+      print(messageData)
       let key: SecKey?
       let status: OSStatus
       (key, status) = self.keyExists(keyTag: keyTag)
