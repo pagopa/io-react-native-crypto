@@ -194,7 +194,7 @@ class IoReactNativeCrypto: NSObject {
         return
       }
       print(message)
-      guard let messageData = message.data(using: .utf8) else {
+      guard let messageData = message.data(using: .hexadecimal) else {
         ME.invalidUTF8Encoding.reject(reject: reject)
         return
       }
