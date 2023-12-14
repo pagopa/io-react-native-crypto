@@ -226,8 +226,8 @@ class IoReactNativeCrypto: NSObject {
     }
   }
 
-  @objc(signHex:withKeyTag:withResolver:withRejecter:)
-  func signHex(
+  @objc(signHEX:withKeyTag:withResolver:withRejecter:)
+  func signHEX(
     message: String,
     keyTag: String,
     resolve:@escaping RCTPromiseResolveBlock,

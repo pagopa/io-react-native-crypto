@@ -170,7 +170,7 @@ export function sign(message: string, keyTag: string): Promise<string> {
  * @param keyTag - the string key tag used to reference the key in the key store.
  * @returns a promise that resolves to the Base64 string representation of the signature.
  */
-export function signHex(message: string, keyTag: string): Promise<string> {
+export function signHEX(message: string, keyTag: string): Promise<string> {
   return IoReactNativeCrypto.signHEX(message, keyTag);
 }
 
