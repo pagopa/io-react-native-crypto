@@ -160,6 +160,21 @@ export function sign(message: string, keyTag: string): Promise<string> {
 }
 
 /**
+ * This function signs the provided `message` as an hex string
+ * with the private key associated with the provided `keyTag`.
+ *
+ * If it is not possible to sign, the promise is rejected providing an
+ * instance of {@link CryptoError}.
+ *
+ * @param message - the string message to sign.
+ * @param keyTag - the string key tag used to reference the key in the key store.
+ * @returns a promise that resolves to the Base64 string representation of the signature.
+ */
+export function signHex(message: string, keyTag: string): Promise<string> {
+  return IoReactNativeCrypto.signHEX(message, keyTag);
+}
+
+/**
  * This function unpacks the provided `signature` in its ASN1 representation.
  *
  * @param signature - the Base64 string representation of the signature.

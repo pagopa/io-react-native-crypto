@@ -193,7 +193,7 @@ class IoReactNativeCrypto: NSObject {
         ME.threadingError.reject(reject: reject)
         return
       }
-      guard let messageData = message.data(using: .hexadecimal) else {
+      guard let messageData = message.data(using: .utf8) else {
         ME.invalidUTF8Encoding.reject(reject: reject)
         return
       }
@@ -226,6 +226,51 @@ class IoReactNativeCrypto: NSObject {
     }
   }
 
+  @objc(signHex:withKeyTag:withResolver:withRejecter:)
+  func signHex(
+    message: String,
+    keyTag: String,
+    resolve:@escaping RCTPromiseResolveBlock,
+    reject:@escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global().async { [weak self] in
+      guard let self = self else {
+        ME.threadingError.reject(reject: reject)
+        return
+      }
+      guard let messageData = message.data(using: .hexadecimal) else {
+        ME.invalidUTF8Encoding.reject(reject: reject)
+        return
+      }
+      let key: SecKey?
+      let status: OSStatus
+      (key, status) = self.keyExists(keyTag: keyTag)
+      guard let key = key, status == errSecSuccess else {
+        ME.publicKeyNotFound.reject(reject: reject)
+        return
+      }
+      let signature: Data?
+      let error: Error?
+      (signature, error) = self.signData(
+        messageData, key,
+        self.keyConfig.keySignAlgorithm()
+      )
+      guard let signature = signature, error == nil else {
+        ME.unableToSign.reject(
+          reject: reject,
+          ("error", error?.localizedDescription ?? "")
+        )
+        return
+      }
+      resolve(
+        String(
+          decoding: Data(signature).base64EncodedData(),
+          as: UTF8.self
+        )
+      )
+    }
+  }
+    
   @objc(unpackBerEncodedASN1:withCoordinateOctoLen:withResolver:withRejecter:)
   func unpackBerEncodedASN1(
     _ signature: String,
