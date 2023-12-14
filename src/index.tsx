@@ -1,5 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
-
+import { getCoordinateOctetLength } from './utils/algorithms';
+import { getAlgFromKey } from './utils/algorithms';
 /**
  * Error codes returned by the iOS module.
  */
@@ -12,7 +13,8 @@ type CryptoErrorCodesIOS =
   | 'KEYCHAIN_LOAD_FAILED'
   | 'INVALID_UTF8_ENCODING'
   | 'UNABLE_TO_SIGN'
-  | 'THREADING_ERROR';
+  | 'THREADING_ERROR'
+  | 'UNPACKING_BER_ENCODED_ASN1_ERROR';
 
 /**
  * Error codes returned by the Android side.
@@ -28,7 +30,8 @@ type CryptoErrorCodesAndroid =
   | 'UNABLE_TO_SIGN'
   | 'INVALID_UTF8_ENCODING'
   | 'INVALID_SIGN_ALGORITHM'
-  | 'UNKNOWN_EXCEPTION';
+  | 'UNKNOWN_EXCEPTION'
+  | 'UNPACKING_BER_ENCODED_ASN1_ERROR';
 
 /**
  * All error codes that the module could return.
@@ -155,3 +158,34 @@ export function deleteKey(keyTag: string): Promise<void> {
 export function sign(message: string, keyTag: string): Promise<string> {
   return IoReactNativeCrypto.signUTF8Text(message, keyTag);
 }
+
+/**
+ * This function signs the provided `message` as an hex string
+ * with the private key associated with the provided `keyTag`.
+ *
+ * If it is not possible to sign, the promise is rejected providing an
+ * instance of {@link CryptoError}.
+ *
+ * @param message - the string message to sign.
+ * @param keyTag - the string key tag used to reference the key in the key store.
+ * @returns a promise that resolves to the Base64 string representation of the signature.
+ */
+export function signHEX(message: string, keyTag: string): Promise<string> {
+  return IoReactNativeCrypto.signHEX(message, keyTag);
+}
+
+/**
+ * This function unpacks the provided `signature` in its ASN1 representation.
+ *
+ * @param signature - the Base64 string representation of the signature.
+ * @param coordinateOctoLen - the length of the octet string representing the coordinates.
+ * @returns a promise that resolves to the ASN1 representation of the signature.
+ */
+export function unpackBerEncodedASN1(
+  signature: string,
+  coordinateOctoLen: number
+): Promise<string> {
+  return IoReactNativeCrypto.unpackBerEncodedASN1(signature, coordinateOctoLen);
+}
+
+export { getCoordinateOctetLength, getAlgFromKey };

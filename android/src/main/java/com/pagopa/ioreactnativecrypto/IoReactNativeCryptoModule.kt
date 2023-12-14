@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
 import android.util.Base64
+import android.util.Base64.DEFAULT
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import java.security.*
@@ -13,6 +14,8 @@ import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
+import com.nimbusds.jose.crypto.impl.ECDSA.transcodeSignatureToConcat
+import okio.ByteString.Companion.decodeHex
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -396,6 +399,82 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  private fun String.decodeHex(): ByteArray {
+    check(length % 2 == 0) { "Must have an even length" }
+
+    return chunked(2)
+      .map { it.toInt(16).toByte() }
+      .toByteArray()
+  }
+
+  @ReactMethod
+  fun signHEX(message: String, keyTag: String, promise: Promise) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      threadHandle = Thread {
+        try {
+          getKeyPair(keyTag)?.private?.let {
+            // Unlike iOS this always returns a byte array.
+            val messageDataBytes = message.decodeHex()
+            val signAlgorithm = getSignAlgorithm(it)
+            val signature = signData(
+              messageDataBytes, it, signAlgorithm
+            )
+            // `encodeToString` uses "US-ASCII" under the hood
+            // which is equivalent to UTF-8 for the first 256 bytes.
+            // Base64 does not generate bytes outside this range.
+            val signatureBase64 = Base64.encodeToString(signature, Base64.NO_WRAP)
+            promise.resolve(signatureBase64)
+            return@Thread
+          }
+          ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise)
+          return@Thread
+        } catch (e: Exception) {
+          var me = ModuleException.UNKNOWN_EXCEPTION
+          when (e) {
+            is NoSuchAlgorithmException -> {
+              me = ModuleException.INVALID_SIGN_ALGORITHM
+            }
+            is InvalidKeyException -> {
+              me = ModuleException.WRONG_KEY_CONFIGURATION
+            }
+            is SignatureException -> {
+              me = ModuleException.UNABLE_TO_SIGN
+            }
+          }
+          me.reject(
+            promise,
+            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+          )
+          return@Thread
+        } catch (e: AssertionError) {
+          ModuleException.INVALID_UTF8_ENCODING.reject(
+            promise,
+            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+          )
+          return@Thread
+        } finally {
+          threadHandle = null
+        }
+      }
+      threadHandle?.start()
+    } else {
+      ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+    }
+  }
+
+  @ReactMethod
+  fun unpackBerEncodedASN1(asn1Signature: String, coordinateOctetLength: Int, promise: Promise) {
+    try {
+      val decodedBytes = Base64.decode(asn1Signature, DEFAULT)
+      val transcoded = transcodeSignatureToConcat(decodedBytes, coordinateOctetLength)
+      val signature = Base64.encodeToString(transcoded, DEFAULT)
+      promise.resolve(signature)
+    } catch (ex: Exception) {
+      ModuleException.UNPACKING_BER_ENCODED_ASN1_ERROR.reject(promise)
+      return
+    }
+  }
+
   @RequiresApi(Build.VERSION_CODES.M)
   @Throws(
     NoSuchAlgorithmException::class,
@@ -487,7 +566,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")),
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
-      UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
+      UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION")),
+      UNPACKING_BER_ENCODED_ASN1_ERROR(Exception("UNPACKING_BER_ENCODED_ASN1_ERROR"));
 
       fun reject(
         promise: Promise, vararg args: Pair<String, String>

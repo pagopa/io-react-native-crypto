@@ -1,3 +1,28 @@
+extension String {
+        enum ExtendedEncoding {
+            case hexadecimal
+        }
+
+        func data(using encoding:ExtendedEncoding) -> Data? {
+            let hexStr = self.dropFirst(self.hasPrefix("0x") ? 2 : 0)
+
+            guard hexStr.count % 2 == 0 else { return nil }
+
+            var newData = Data(capacity: hexStr.count/2)
+
+            var indexIsEven = true
+            for i in hexStr.indices {
+                if indexIsEven {
+                    let byteRange = i...hexStr.index(after: i)
+                    guard let byte = UInt8(hexStr[byteRange], radix: 16) else { return nil }
+                    newData.append(byte)
+                }
+                indexIsEven.toggle()
+            }
+            return newData
+        }
+    }
+
 @objc(IoReactNativeCrypto)
 class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
@@ -200,6 +225,120 @@ class IoReactNativeCrypto: NSObject {
       )
     }
   }
+
+  @objc(signHEX:withKeyTag:withResolver:withRejecter:)
+  func signHEX(
+    message: String,
+    keyTag: String,
+    resolve:@escaping RCTPromiseResolveBlock,
+    reject:@escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global().async { [weak self] in
+      guard let self = self else {
+        ME.threadingError.reject(reject: reject)
+        return
+      }
+      guard let messageData = message.data(using: .hexadecimal) else {
+        ME.invalidUTF8Encoding.reject(reject: reject)
+        return
+      }
+      let key: SecKey?
+      let status: OSStatus
+      (key, status) = self.keyExists(keyTag: keyTag)
+      guard let key = key, status == errSecSuccess else {
+        ME.publicKeyNotFound.reject(reject: reject)
+        return
+      }
+      let signature: Data?
+      let error: Error?
+      (signature, error) = self.signData(
+        messageData, key,
+        self.keyConfig.keySignAlgorithm()
+      )
+      guard let signature = signature, error == nil else {
+        ME.unableToSign.reject(
+          reject: reject,
+          ("error", error?.localizedDescription ?? "")
+        )
+        return
+      }
+      resolve(
+        String(
+          decoding: Data(signature).base64EncodedData(),
+          as: UTF8.self
+        )
+      )
+    }
+  }
+    
+  @objc(unpackBerEncodedASN1:withCoordinateOctoLen:withResolver:withRejecter:)
+  func unpackBerEncodedASN1(
+    _ signature: String,
+    coordinateOctetLength: Int,
+    resolver resolve: RCTPromiseResolveBlock,
+    rejecter reject: RCTPromiseRejectBlock
+  ) {
+    do {
+      let signatureData = Data(base64Encoded: signature)
+      let ecSignatureTLV = [UInt8](signatureData!)
+      let ecSignature = try ecSignatureTLV.read(.sequence)
+      let varlenR = try Data(ecSignature.read(.integer))
+      let varlenS = try Data(ecSignature.skip(.integer).read(.integer))
+      let fixlenR = Asn1IntegerConversion.toRaw(varlenR, of: coordinateOctetLength)
+      let fixlenS = Asn1IntegerConversion.toRaw(varlenS, of: coordinateOctetLength)
+      let sign = fixlenR + fixlenS
+      resolve(String(
+        decoding: Data(sign).base64EncodedData(),
+        as: UTF8.self
+       ))
+    }
+    catch {
+      ME.unpackingBerEncodedASN1Error.reject(reject: reject)
+      return
+    }
+  }
+
+  // Converting integers to and from DER encoded ASN.1 as described here:
+  // https://docs.microsoft.com/en-us/windows/desktop/seccertenroll/about-integer
+  // This conversion is required because the Secure Enclave only supports generating ASN.1 encoded signatures,
+  // while the JWS Standard requires raw signatures, where the R and S are unsigned integers with a fixed length:
+  // https://github.com/airsidemobile/JOSESwift/pull/156#discussion_r292370209
+  // https://tools.ietf.org/html/rfc7515#appendix-A.3.1
+  internal struct Asn1IntegerConversion {
+    static func toRaw(_ data: Data, of fixedLength: Int) -> Data {
+      let varLength = data.count
+      if varLength > fixedLength + 1 {
+        fatalError("ASN.1 integer is \(varLength) bytes long when it should be < \(fixedLength + 1).")
+      }
+      if varLength == fixedLength + 1 {
+        assert(data.first == 0)
+        return data.dropFirst()
+      }
+      if varLength == fixedLength {
+        return data
+      }
+      if varLength < fixedLength {
+        // pad to fixed length using 0x00 bytes
+        return Data(count: fixedLength - varLength) + data
+      }
+      fatalError("Unable to parse ASN.1 integer. This should be unreachable.")
+    }
+
+    static func fromRaw(_ data: Data) -> Data {
+      assert(data.count > 0)
+      let msb: UInt8 = 0b1000_0000
+      // drop all leading zero bytes
+      let varlen = data.drop { $0 == 0}
+      guard let firstNonZero = varlen.first else {
+        // all bytes were zero so the encoded value is zero
+        return Data(count: 1)
+      }
+      if (firstNonZero & msb) == msb {
+        return Data(count: 1) + varlen
+      }
+      return varlen
+    }
+  }
   
   private func signData(
     _ message: Data,
@@ -274,28 +413,31 @@ class IoReactNativeCrypto: NSObject {
     case invalidUTF8Encoding = "INVALID_UTF8_ENCODING"
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
+    case unpackingBerEncodedASN1Error = "UNPACKING_BER_ENCODED_ASN1_ERROR"
     
     func error(userInfo: [String : Any]? = nil) -> NSError {
-      switch self {
-      case .keyAlreadyExists:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .unsupportedDevice:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .wrongKeyConfiguration:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .publicKeyNotFound:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .publicKeyDeletionError:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .keychainLoadFailed:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .invalidUTF8Encoding:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .unableToSign:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .threadingError:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      }
+        switch self {
+        case .keyAlreadyExists:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .unsupportedDevice:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .wrongKeyConfiguration:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .publicKeyNotFound:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .publicKeyDeletionError:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .keychainLoadFailed:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .invalidUTF8Encoding:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .unableToSign:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .threadingError:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        case .unpackingBerEncodedASN1Error:
+            return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+        }
     }
     
     func reject(reject: RCTPromiseRejectBlock, _ moreUserInfo: (String, Any)...) {
