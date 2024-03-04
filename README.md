@@ -55,6 +55,26 @@ try {
 // result is the JWK of the generated public key, error if no key has been yet generated
 ```
 
+### Checks whether a key is stored in StrongBox or not (Android only, raises a UNSUPPORTED_DEVICE error on iOS)
+
+```js
+import { isKeyStrongboxBacked } from '@pagopa/io-react-native-crypto';
+
+// ...
+
+try {
+  const isKeyStrongboxBacked = await isKeyStrongboxBacked('PERSONAL_KEYTAG');
+  if(isKeyStrongboxBacked) {
+    console.log('The key is stored in the StrongBox');
+  } else {
+    console.log('The key is stored in TEE');
+  }
+} catch (e) {
+  const {message, userInfo} = e as CryptoError;
+}
+// result is the JWK of the generated public key, error if no key has been yet generated
+```
+
 ### Delete the key
 
 ```js
@@ -84,7 +104,7 @@ try {
 |         TypeName          |  Platform   | Description                                                             |
 | :-----------------------: | :---------: | ----------------------------------------------------------------------- |
 |    KEY_ALREADY_EXISTS     | iOS/Android | The key you're trying to generate already exists                        |
-|    UNSUPPORTED_DEVICE     | iOS/Android | Device doesn't support hardware backed keys                             |
+|    UNSUPPORTED_DEVICE     | iOS/Android | Device doesn't support hardware backed keys or the requested method     |
 |  WRONG_KEY_CONFIGURATION  | iOS/Android | The key configuration has not been correctly defined                    |
 |   PUBLIC_KEY_NOT_FOUND    | iOS/Android | The public key is missing for a specific keyTag                         |
 | PUBLIC_KEY_DELETION_ERROR | iOS/Android | An error occurred while deleting the public key                         |

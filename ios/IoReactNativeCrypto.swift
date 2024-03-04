@@ -90,13 +90,14 @@ class IoReactNativeCrypto: NSObject {
     let jwk = jwkRepresentation(publicKey)
     resolve(jwk)
   }
-    
-@objc(isKeyStrongboxBacked:withResolver:withRejecter:)
-func isKeyStrongboxBacked(
+  
+  /// Always rejects the promise with UNSUPPORTED_DEVICE error as this method is Android only. It's still implemented to keep the same error structure.
+  @objc(isKeyStrongboxBacked:withResolver:withRejecter:)
+  func isKeyStrongboxBacked(
     keyTag:String,
     resolve:RCTPromiseResolveBlock,
     reject:RCTPromiseRejectBlock
-) {
+  ) {
     ME.unsupportedDevice.reject(reject: reject)
   }
   
