@@ -48,76 +48,78 @@ export default function App() {
             justifyContent: 'space-between',
           }}
         >
-          <Button
-            title="sign"
-            onPress={() => {
-              sign("Ceci n'est pas une nonce", keyTag)
-                .then((value) => {
-                  console.log(JSON.stringify(value));
-                  setLogText(JSON.stringify(value));
-                })
-                .catch((reason: CryptoError) => {
-                  console.log(reason);
-                  setLogText(`${reason}`);
-                });
-            }}
-          />
-          <Button
-            title="get"
-            onPress={() => {
-              getPublicKey(keyTag)
-                .then((value) => {
-                  console.log(JSON.stringify(value));
-                  setLogText(JSON.stringify(value));
-                })
-                .catch((reason: CryptoError) => {
-                  console.log(reason);
-                  setLogText(`${reason}`);
-                });
-            }}
-          />
-          <Button
-            title="create"
-            onPress={() => {
-              generate(keyTag)
-                .then((value) => {
-                  console.log(JSON.stringify(value));
-                  setLogText(JSON.stringify(value));
-                })
-                .catch((reason: CryptoError) => {
-                  console.log(reason);
-                  setLogText(`${reason}`);
-                });
-            }}
-          />
-          <Button
-            title="delete"
-            onPress={() => {
-              deleteKey(keyTag)
-                .then(() => {
-                  console.log('true');
-                  setLogText('true');
-                })
-                .catch((reason: CryptoError) => {
-                  console.log(reason);
-                  setLogText(`${reason}`);
-                });
-            }}
-          />
-          <Button
-            title="is stronbox (Android only)"
-            onPress={() => {
-              isKeyStrongboxBacked(keyTag)
-                .then((result) => {
-                  console.log(result);
-                  setLogText(result ? 'true' : 'false');
-                })
-                .catch((reason: CryptoError) => {
-                  console.log(reason);
-                  setLogText(`${reason}`);
-                });
-            }}
-          />
+          <ScrollView horizontal>
+            <Button
+              title="sign"
+              onPress={() => {
+                sign("Ceci n'est pas une nonce", keyTag)
+                  .then((value) => {
+                    console.log(JSON.stringify(value));
+                    setLogText(JSON.stringify(value));
+                  })
+                  .catch((reason: CryptoError) => {
+                    console.log(reason);
+                    setLogText(`${reason}`);
+                  });
+              }}
+            />
+            <Button
+              title="get"
+              onPress={() => {
+                getPublicKey(keyTag)
+                  .then((value) => {
+                    console.log(JSON.stringify(value));
+                    setLogText(JSON.stringify(value));
+                  })
+                  .catch((reason: CryptoError) => {
+                    console.log(reason);
+                    setLogText(`${reason}`);
+                  });
+              }}
+            />
+            <Button
+              title="create"
+              onPress={() => {
+                generate(keyTag)
+                  .then((value) => {
+                    console.log(JSON.stringify(value));
+                    setLogText(JSON.stringify(value));
+                  })
+                  .catch((reason: CryptoError) => {
+                    console.log(reason);
+                    setLogText(`${reason}`);
+                  });
+              }}
+            />
+            <Button
+              title="delete"
+              onPress={() => {
+                deleteKey(keyTag)
+                  .then(() => {
+                    console.log('true');
+                    setLogText('true');
+                  })
+                  .catch((reason: CryptoError) => {
+                    console.log(reason);
+                    setLogText(`${reason}`);
+                  });
+              }}
+            />
+            <Button
+              title="isKeyStrongboxBacked"
+              onPress={() => {
+                isKeyStrongboxBacked(keyTag)
+                  .then((result) => {
+                    console.log(result);
+                    setLogText(result ? 'true' : 'false');
+                  })
+                  .catch((reason: CryptoError) => {
+                    console.log(reason);
+                    setLogText(`${reason}`);
+                  });
+              }}
+            />
+          </ScrollView>
         </View>
         <ScrollView
           style={{
