@@ -90,6 +90,15 @@ class IoReactNativeCrypto: NSObject {
     let jwk = jwkRepresentation(publicKey)
     resolve(jwk)
   }
+    
+@objc(isKeyStrongboxBacked:withResolver:withRejecter:)
+func isKeyStrongboxBacked(
+    keyTag:String,
+    resolve:RCTPromiseResolveBlock,
+    reject:RCTPromiseRejectBlock
+) {
+    ME.unsupportedDevice.reject(reject: reject)
+  }
   
   private func generatePrivateKey(keyTag: String) throws -> SecKey? {
     var error: Unmanaged<CFError>?

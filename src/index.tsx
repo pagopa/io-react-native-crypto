@@ -155,3 +155,16 @@ export function deleteKey(keyTag: string): Promise<void> {
 export function sign(message: string, keyTag: string): Promise<string> {
   return IoReactNativeCrypto.signUTF8Text(message, keyTag);
 }
+
+/**
+ * This function checks whether or not a key is backed by Strongbox on Android.
+ *
+ * If it is not possible to retrive the key, the promise is rejected providing an
+ * instance of {@link CryptoError}.
+ *
+ * @param keyTag - the string key tag used to reference the key in the key store.
+ * @returns a promise that resolves to true if the key is backed by Strongbox, false otherwise.
+ */
+export function isKeyStrongboxBacked(keyTag: string): Promise<boolean> {
+  return IoReactNativeCrypto.isKeyStrongboxBacked(keyTag);
+}

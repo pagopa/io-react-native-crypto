@@ -60,6 +60,17 @@ declare module 'io-react-native-crypto' {
   export function deleteKey(keyTag: string): Promise<void>;
 
   /**
+   * This function checks whether or not a key is backed by Strongbox on Android.
+   *
+   * If it is not possible to retrive the key, the promise is rejected providing an
+   * instance of {@link CryptoError}.
+   *
+   * @param keyTag - the string key tag used to reference the key in the key store.
+   * @returns a promise that resolves to true if the key is backed by Strongbox, false otherwise.
+   */
+  export function isKeyStrongboxBacked(keyTag: string): Promise<boolean>;
+
+  /**
    * Error codes returned by the iOS module.
    */
   type CryptoErrorCodesIOS =

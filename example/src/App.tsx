@@ -13,6 +13,7 @@ import {
   deleteKey,
   generate,
   getPublicKey,
+  isKeyStrongboxBacked,
   sign,
 } from '@pagopa/io-react-native-crypto';
 
@@ -96,6 +97,20 @@ export default function App() {
                 .then(() => {
                   console.log('true');
                   setLogText('true');
+                })
+                .catch((reason: CryptoError) => {
+                  console.log(reason);
+                  setLogText(`${reason}`);
+                });
+            }}
+          />
+          <Button
+            title="is stronbox (Android only)"
+            onPress={() => {
+              isKeyStrongboxBacked(keyTag)
+                .then((result) => {
+                  console.log(result);
+                  setLogText(result ? 'true' : 'false');
                 })
                 .catch((reason: CryptoError) => {
                   console.log(reason);
