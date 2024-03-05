@@ -91,6 +91,16 @@ class IoReactNativeCrypto: NSObject {
     resolve(jwk)
   }
   
+  /// Always rejects the promise with UNSUPPORTED_DEVICE error as this method is Android only. It's still implemented to keep the same error structure.
+  @objc(isKeyStrongboxBacked:withResolver:withRejecter:)
+  func isKeyStrongboxBacked(
+    keyTag:String,
+    resolve:RCTPromiseResolveBlock,
+    reject:RCTPromiseRejectBlock
+  ) {
+    ME.unsupportedDevice.reject(reject: reject)
+  }
+  
   private func generatePrivateKey(keyTag: String) throws -> SecKey? {
     var error: Unmanaged<CFError>?
     

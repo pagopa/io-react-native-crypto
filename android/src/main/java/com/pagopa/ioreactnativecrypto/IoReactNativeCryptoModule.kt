@@ -322,6 +322,30 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  @ReactMethod
+  fun isKeyStrongboxBacked(keyTag: String, promise: Promise) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      getKeyPair(keyTag)?.let {
+        val privateKey = it.private
+        val factory = KeyFactory.getInstance(
+          privateKey.algorithm, KEYSTORE_PROVIDER
+        )
+        val keyInfo = factory.getKeySpec(privateKey, KeyInfo::class.java)
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          keyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX
+        } else {
+          false
+        }
+        return promise.resolve(result)
+      }
+      return ModuleException.PUBLIC_KEY_NOT_FOUND.reject(
+        promise, Pair("keyTag", keyTag)
+      )
+    } else {
+      return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+    }
+  }
+
   @RequiresApi(Build.VERSION_CODES.M)
   @Throws(NoSuchAlgorithmException::class)
   private fun getSignAlgorithm(privateKey: PrivateKey): String {
