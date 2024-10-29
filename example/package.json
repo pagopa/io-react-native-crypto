@@ -9,14 +9,20 @@
     "pods": "pod-install --quiet"
   },
   "dependencies": {
-    "react": "18.1.0",
-    "react-native": "0.70.14",
+    "react": "18.3.1",
+    "react-native": "0.75.4",
     "react-native-progress": "^5.0.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.12.9",
-    "@babel/runtime": "^7.12.5",
-    "babel-plugin-module-resolver": "^4.1.0",
-    "metro-react-native-babel-preset": "0.72.4"
-  }
+    "@babel/core": "^7.20.0",
+    "@babel/runtime": "^7.20.0",
+    "@react-native/babel-preset": "0.75.4",
+    "@react-native/metro-config": "0.75.4",
+    "@react-native/typescript-config": "0.75.4",
+    "babel-plugin-module-resolver": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "yarn@3.6.4"
 }
