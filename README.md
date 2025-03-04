@@ -1,5 +1,7 @@
 # @pagopa/io-react-native-crypto
 
+to be closed!
+
 Module to generate and sign with crypto keys backed on device security hardware on react-native platform.
 
 ## Installation
