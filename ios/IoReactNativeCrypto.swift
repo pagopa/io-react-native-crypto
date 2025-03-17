@@ -353,7 +353,7 @@ class IoReactNativeCrypto: NSObject {
     case invalidUTF8Encoding = "INVALID_UTF8_ENCODING"
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
-    case certificatesValidationError = "CERTIFICATES_VALIDATION_ERROR"
+    case certificatesValidationError = "CERTIFICATE_CHAIN_VALIDATION_ERROR"
     
     func error(userInfo: [String : Any]? = nil) -> NSError {
       switch self {
