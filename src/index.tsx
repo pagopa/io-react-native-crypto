@@ -149,7 +149,7 @@ export function deleteKey(keyTag: string): Promise<void> {
  * If it is not possible to sign, the promise is rejected providing an
  * instance of {@link CryptoError}.
  *
- * @param message
+ * @param message - the string message to sign.
  * @param keyTag - the string key tag used to reference the key in the key store.
  * @returns a promise that resolves to the Base64 string representation of the signature.
  */
