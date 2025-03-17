@@ -168,8 +168,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
       // Validate
       val isValid = verifyCertificateChain(chain, trustAnchorCert)
-      // Return the result to React Native
-      promise.resolve(isValid)
       promise.resolve(isValid)
     } catch (e: Exception) {
       ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
