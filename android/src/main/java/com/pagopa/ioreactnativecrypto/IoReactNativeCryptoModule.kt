@@ -7,7 +7,13 @@ import android.security.keystore.KeyProperties.*
 import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
+import java.io.ByteArrayInputStream
 import java.security.*
+import java.security.cert.CertPathValidator
+import java.security.cert.CertificateFactory
+import java.security.cert.PKIXParameters
+import java.security.cert.TrustAnchor
+import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
@@ -151,6 +157,66 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       return
     } finally {
       threadHandle = null
+    }
+  }
+
+  @ReactMethod
+  fun verifyCertificateChain(certificatesChain: ReadableArray, trustAnchorCert: String, promise: Promise) {
+    try {
+      // Convert ReadableArray to a List<String>
+      val chain: List<String> = certificatesChain.toArrayList().map { it.toString() }
+
+      // Validate
+      val isValid = verifyCertificateChain(chain, trustAnchorCert)
+      // Return the result to React Native
+      promise.resolve(isValid)
+      promise.resolve(isValid)
+    } catch (e: Exception) {
+      ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+    }
+  }
+
+
+  /**
+   * Verifies the certificate chain provided in the x5c array against the trust anchor certificate.
+   *
+   * @param certificatesChain A list of Base64-encoded certificates representing the chain.
+   * @param trustAnchorCertBase64 A Base64-encoded trust anchor certificate.
+   * @return true if the chain is valid; false otherwise.
+   */
+  private fun verifyCertificateChain(certificatesChain: List<String>, trustAnchorCertBase64: String): Boolean {
+    try {
+      // Create a CertificateFactory for X.509 certificates.
+      val certificateFactory = CertificateFactory.getInstance("X.509")
+
+      // Decode the trust anchor certificate.
+      val trustAnchorBytes = Base64.decode(trustAnchorCertBase64, Base64.DEFAULT)
+      val trustAnchorCert = certificateFactory.generateCertificate(ByteArrayInputStream(trustAnchorBytes)) as X509Certificate
+      val trustAnchor = TrustAnchor(trustAnchorCert, null)
+
+      // Decode each certificate from the certificatesChain chain.
+      val certificateChain = certificatesChain.map { certBase64 ->
+        val certBytes = Base64.decode(certBase64, Base64.DEFAULT)
+        val cert = certificateFactory.generateCertificate(ByteArrayInputStream(certBytes)) as X509Certificate
+        cert
+      }
+
+      // Create a CertPath from the certificate chain.
+      // The certificates should be in order from the end-entity certificate up to the last intermediate.
+      val certPath = certificateFactory.generateCertPath(certificateChain)
+
+      // Set up PKIX parameters using the trust anchor.
+      val pkixParams = PKIXParameters(setOf(trustAnchor))
+      // Revocation checking is disabled for now
+      pkixParams.isRevocationEnabled = false
+
+      // Validate the certificate chain.
+      val validator = CertPathValidator.getInstance("PKIX")
+      validator.validate(certPath, pkixParams)
+
+      return true
+    } catch (e: Exception) {
+      return false
     }
   }
 
@@ -511,6 +577,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")),
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
+      CERTIFICATE_CHAIN_VALIDATION_ERROR(Exception("CERTIFICATE_CHAIN_VALIDATION_ERROR")),
       UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
 
       fun reject(

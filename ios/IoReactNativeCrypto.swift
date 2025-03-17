@@ -3,6 +3,75 @@ class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
   private let keyConfig: KeyConfig = .ec
   
+  @objc(verifyCertificateChain:withTrustAnchorCert:withResolver:withRejecter:)
+  func verifyCertificateChain(
+    certificatesChain: NSArray,
+    trustAnchorCert: String,
+    resolve:@escaping RCTPromiseResolveBlock,
+    reject:@escaping RCTPromiseRejectBlock
+  ){
+    do {
+        // Load the certificates from a Base64
+        let certificates = try certificatesChain.map { certBase64 in
+            return try IoReactNativeCrypto.loadCertificate(from: certBase64 as! String)
+        }
+        let trustAnchor = try IoReactNativeCrypto.loadCertificate(from: trustAnchorCert)
+
+        // Validate the certificate chain
+        let isValid = IoReactNativeCrypto.validateCertificateChain(certificates: certificates, trustAnchor: trustAnchor)
+
+        resolve(isValid)
+    } catch {
+        ModuleException.certificatesValidationError.reject(reject: reject, ("error", error.localizedDescription))
+    }
+  }
+
+  /// Loads a certificate from a Base64-encoded string
+  private static func loadCertificate(from base64String: String) throws -> SecCertificate {
+      guard let certData = Data(base64Encoded: base64String, options: .ignoreUnknownCharacters) else {
+          throw ModuleException.certificatesValidationError.error(userInfo: ["reason": "Invalid Base64 encoding"])
+      }
+      guard let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
+          throw ModuleException.certificatesValidationError.error(userInfo: ["reason": "Failed to create certificate"])
+      }
+      return certificate
+  }
+
+  /// Validates the given certificate chain against the trust anchor
+  static func validateCertificateChain(certificates: [SecCertificate], trustAnchor: SecCertificate) -> Bool {
+      var trust: SecTrust?
+      let policy = SecPolicyCreateBasicX509()
+      let status = SecTrustCreateWithCertificates(certificates as CFArray, policy, &trust)
+
+      guard status == errSecSuccess, let trust = trust else {
+          return false
+      }
+
+      // Set the trust anchor (Root CA)
+      let statusAnchor = SecTrustSetAnchorCertificates(trust, [trustAnchor] as CFArray)
+      guard statusAnchor == errSecSuccess else {
+          return false
+      }
+
+      // Validate trust based on iOS version
+      var isValid = false
+      if #available(iOS 12.0, *) {
+          var error: CFError?
+          isValid = SecTrustEvaluateWithError(trust, &error)
+
+      } else {
+          var trustResult: SecTrustResultType = .invalid
+          let status = SecTrustEvaluate(trust, &trustResult)
+          
+          if status == errSecSuccess {
+              isValid = (trustResult == .unspecified || trustResult == .proceed)
+          } else {
+          }
+      }
+
+      return isValid
+  }
+  
   @objc(generate:withResolver:withRejecter:)
   func generate(
     keyTag: String,
@@ -284,6 +353,7 @@ class IoReactNativeCrypto: NSObject {
     case invalidUTF8Encoding = "INVALID_UTF8_ENCODING"
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
+    case certificatesValidationError = "CERTIFICATES_VALIDATION_ERROR"
     
     func error(userInfo: [String : Any]? = nil) -> NSError {
       switch self {
@@ -304,6 +374,8 @@ class IoReactNativeCrypto: NSObject {
       case .unableToSign:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .threadingError:
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+      case .certificatesValidationError:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       }
     }

@@ -14,8 +14,9 @@ import {
   generate,
   getPublicKey,
   isKeyStrongboxBacked,
-  sign,
+  sign, verifyCertificateChain,
 } from '@pagopa/io-react-native-crypto';
+import { mockCertificateChain } from './mocks/certifaces.mock';
 
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
@@ -117,6 +118,20 @@ export default function App() {
                     console.log(reason);
                     setLogText(`${reason}`);
                   });
+              }}
+            />
+            <Button
+              title="verifyCertificates"
+              onPress={() => {
+                verifyCertificateChain(mockCertificateChain.x5c, mockCertificateChain.trustAnchorCert)
+                  .then((result) => {
+                    console.log(result);
+                    setLogText(result ? 'true' : 'false');
+                  })
+                  .catch((reason: CryptoError) => {
+                    console.log(reason);
+                    setLogText(`${reason}`);
+                  })
               }}
             />
           </ScrollView>

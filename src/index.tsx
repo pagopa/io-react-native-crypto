@@ -28,6 +28,7 @@ type CryptoErrorCodesAndroid =
   | 'UNABLE_TO_SIGN'
   | 'INVALID_UTF8_ENCODING'
   | 'INVALID_SIGN_ALGORITHM'
+  | 'CERTIFICATE_CHAIN_VALIDATION_ERROR'
   | 'UNKNOWN_EXCEPTION';
 
 /**
@@ -167,4 +168,20 @@ export function sign(message: string, keyTag: string): Promise<string> {
  */
 export function isKeyStrongboxBacked(keyTag: string): Promise<boolean> {
   return IoReactNativeCrypto.isKeyStrongboxBacked(keyTag);
+}
+
+/**
+ * This function verifies a certificate chain against a trust anchor certificate.
+ *
+ * The function takes an array of certificates (`x5cChain`) and a trust anchor certificate (`trustAnchorCert`),
+ * and returns a promise that resolves to a boolean indicating whether the certificate chain is valid.
+ *
+ * If the verification fails, the promise is rejected providing an instance of {@link CryptoError}.
+ *
+ * @param certificatesChain - An array of strings representing the certificate chain in Base64 format.
+ * @param trustAnchorCert - A string representing the trust anchor certificate in Base64 format.
+ * @returns A promise that resolves to true if the certificate chain is valid, false otherwise.
+ */
+export function verifyCertificateChain(certificatesChain: string[], trustAnchorCert: string): Promise<boolean> {
+  return IoReactNativeCrypto.verifyCertificateChain(certificatesChain, trustAnchorCert);
 }

@@ -22,6 +22,9 @@ RCT_EXTERN_METHOD(signUTF8Text:(NSString*)text withKeyTag:(NSString*)keyTag
                  withResolver:(RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(verifyCertificateChain:(NSArray*)certificatesChain withTrustAnchorCert:(NSString*)trustAnchorCert
+                 withResolver:(RCTPromiseResolveBlock)resolve
+                 withRejecter:(RCTPromiseRejectBlock)reject)
 
 + (BOOL)requiresMainQueueSetup
 {
