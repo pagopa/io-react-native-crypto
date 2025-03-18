@@ -54,22 +54,19 @@ class IoReactNativeCrypto: NSObject {
       }
 
       // Validate trust based on iOS version
-      var isValid = false
       if #available(iOS 12.0, *) {
           var error: CFError?
-          isValid = SecTrustEvaluateWithError(trust, &error)
-
+          return SecTrustEvaluateWithError(trust, &error)
       } else {
           var trustResult: SecTrustResultType = .invalid
-          let status = SecTrustEvaluate(trust, &trustResult)
+          let evalStatus = SecTrustEvaluate(trust, &trustResult)
           
-          if status == errSecSuccess {
-              isValid = (trustResult == .unspecified || trustResult == .proceed)
+          if evalStatus == errSecSuccess {
+              return (trustResult == .unspecified || trustResult == .proceed)
           } else {
+              return false
           }
       }
-
-      return isValid
   }
   
   @objc(generate:withResolver:withRejecter:)
