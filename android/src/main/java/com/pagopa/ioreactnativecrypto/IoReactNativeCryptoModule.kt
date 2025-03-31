@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
 import android.util.Base64
+import android.util.Log
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import java.security.*
@@ -136,9 +137,11 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         is NoSuchAlgorithmException -> {
           me = ModuleException.WRONG_KEY_CONFIGURATION
         }
+
         is InvalidAlgorithmParameterException -> {
           me = ModuleException.WRONG_KEY_CONFIGURATION
         }
+
         is NoSuchProviderException -> {
           me = ModuleException.UNSUPPORTED_DEVICE
         }
@@ -207,15 +210,26 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       // https://www.rfc-editor.org/rfc/rfc6025.html#section-2.1.2
       // The subjectPublicKey of an EC key is an ECPoint that is `w` field of the `ECPublicKey`
       val ecKey = key.w
+      val x = ecKey.affineX.toByteArray()
+      val y = ecKey.affineY.toByteArray()
+
+      Log.i("DEBUG", "X byte array length before fix: ${x.size}")
+      Log.i("DEBUG", "Y byte array length before fix: ${y.size}")
+
+      val fixedX = removeFirstSignByte(x)
+      val fixedY = removeFirstSignByte(y)
+
+      Log.i("DEBUG", "X byte array length after fix: ${fixedX.size}")
+      Log.i("DEBUG", "Y byte array length after fix: ${fixedY.size}")
 
       // https://www.rfc-editor.org/rfc/rfc7517#section-3
       nativeMap.putString(JwkFields.KTY.key, KeyConfig.EC_P_256.jwkKty)
       nativeMap.putString(JwkFields.CRV.key, KeyConfig.EC_P_256.jwkCrv)
       nativeMap.putString(
-        JwkFields.X.key, ecKey.affineX.toByteArray().base64NoWrap()
+        JwkFields.X.key, fixedX.base64NoWrap()
       )
       nativeMap.putString(
-        JwkFields.Y.key, ecKey.affineY.toByteArray().base64NoWrap()
+        JwkFields.Y.key, fixedY.base64NoWrap()
       )
       return nativeMap
     } else if (key is RSAPublicKey) {
@@ -232,6 +246,21 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       return nativeMap
     }
     return null
+  }
+
+  /**
+   * Removes the first byte from a bytearray if it equals to zero.
+   * This is useful when converting a BitInteger to a ByteArray as
+   * if the number starts with 1 a 0 is added as padding to avoid
+   * it being interpreted as a negative number.
+   */
+  private fun removeFirstSignByte(byteArray: ByteArray): ByteArray {
+    return if (byteArray.first() == 0.toByte()) {
+      Log.i("DEBUG", "Found sign byte, dropping it")
+      byteArray.drop(1).toByteArray()
+    } else {
+      byteArray
+    }
   }
 
   @RequiresApi(Build.VERSION_CODES.M)
@@ -356,9 +385,11 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       KEY_ALGORITHM_EC -> {
         KeyConfig.EC_P_256.signature
       }
+
       KEY_ALGORITHM_RSA -> {
         KeyConfig.RSA.signature
       }
+
       else -> {
         throw NoSuchAlgorithmException()
       }
@@ -392,9 +423,11 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
             is NoSuchAlgorithmException -> {
               me = ModuleException.INVALID_SIGN_ALGORITHM
             }
+
             is InvalidKeyException -> {
               me = ModuleException.WRONG_KEY_CONFIGURATION
             }
+
             is SignatureException -> {
               me = ModuleException.UNABLE_TO_SIGN
             }
