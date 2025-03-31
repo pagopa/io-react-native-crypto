@@ -385,11 +385,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       KEY_ALGORITHM_EC -> {
         KeyConfig.EC_P_256.signature
       }
-
       KEY_ALGORITHM_RSA -> {
         KeyConfig.RSA.signature
       }
-
       else -> {
         throw NoSuchAlgorithmException()
       }
@@ -423,11 +421,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
             is NoSuchAlgorithmException -> {
               me = ModuleException.INVALID_SIGN_ALGORITHM
             }
-
             is InvalidKeyException -> {
               me = ModuleException.WRONG_KEY_CONFIGURATION
             }
-
             is SignatureException -> {
               me = ModuleException.UNABLE_TO_SIGN
             }
