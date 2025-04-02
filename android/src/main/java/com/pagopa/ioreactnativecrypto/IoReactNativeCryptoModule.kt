@@ -160,64 +160,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  @ReactMethod
-  fun verifyCertificateChain(certificatesChain: ReadableArray, trustAnchorCert: String, promise: Promise) {
-    try {
-      // Convert ReadableArray to a List<String>
-      val chain: List<String> = certificatesChain.toArrayList().map { it.toString() }
-
-      // Validate
-      val isValid = verifyCertificateChain(chain, trustAnchorCert)
-      promise.resolve(isValid)
-    } catch (e: Exception) {
-      ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
-    }
-  }
-
-
-  /**
-   * Verifies the certificate chain provided in the x5c array against the trust anchor certificate.
-   *
-   * @param certificatesChain A list of Base64-encoded certificates representing the chain.
-   * @param trustAnchorCertBase64 A Base64-encoded trust anchor certificate.
-   * @return true if the chain is valid; false otherwise.
-   */
-  private fun verifyCertificateChain(certificatesChain: List<String>, trustAnchorCertBase64: String): Boolean {
-    try {
-      // Create a CertificateFactory for X.509 certificates.
-      val certificateFactory = CertificateFactory.getInstance("X.509")
-
-      // Decode the trust anchor certificate.
-      val trustAnchorBytes = Base64.decode(trustAnchorCertBase64, Base64.DEFAULT)
-      val trustAnchorCert = certificateFactory.generateCertificate(ByteArrayInputStream(trustAnchorBytes)) as X509Certificate
-      val trustAnchor = TrustAnchor(trustAnchorCert, null)
-
-      // Decode each certificate from the certificatesChain chain.
-      val certificateChain = certificatesChain.map { certBase64 ->
-        val certBytes = Base64.decode(certBase64, Base64.DEFAULT)
-        val cert = certificateFactory.generateCertificate(ByteArrayInputStream(certBytes)) as X509Certificate
-        cert
-      }
-
-      // Create a CertPath from the certificate chain.
-      // The certificates should be in order from the end-entity certificate up to the last intermediate.
-      val certPath = certificateFactory.generateCertPath(certificateChain)
-
-      // Set up PKIX parameters using the trust anchor.
-      val pkixParams = PKIXParameters(setOf(trustAnchor))
-      // Revocation checking is disabled for now
-      pkixParams.isRevocationEnabled = false
-
-      // Validate the certificate chain.
-      val validator = CertPathValidator.getInstance("PKIX")
-      validator.validate(certPath, pkixParams)
-
-      return true
-    } catch (e: Exception) {
-      return false
-    }
-  }
-
   @RequiresApi(Build.VERSION_CODES.M)
   private fun keyExists(keyTag: String) = getKeyPair(keyTag) != null
 
@@ -516,6 +458,34 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       return null
     } catch (_: Exception) {
       return null
+    }
+  }
+
+  @ReactMethod
+  fun verifyCertificateChain(
+    certChainBase64: ReadableArray,
+    trustAnchorBase64: String,
+    promise: Promise
+  ) {
+    try {
+      // Convert ReadableArray to a List<String>
+      val chain: List<String> = certChainBase64.toArrayList().map { it.toString() }
+
+      // Use the utility class to validate
+      val result = X509VerificationUtils.verifyCertificateChain(chain, trustAnchorBase64)
+
+      // Return detailed result as a map
+      val resultMap = Arguments.createMap().apply {
+        putBoolean("isValid", result.isValid)
+        putString("errorMessage", result.errorMessage ?: "")
+        putString("validationStatus", result.validationStatus.name)
+      }
+      promise.resolve(resultMap)
+    } catch (e: Exception) {
+      ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(
+        promise,
+        Pair(ERROR_USER_INFO_KEY, e.message ?: "Unknown error during certificate validation")
+      )
     }
   }
 
