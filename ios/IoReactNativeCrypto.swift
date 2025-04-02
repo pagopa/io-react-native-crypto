@@ -2,69 +2,43 @@
 class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
   private let keyConfig: KeyConfig = .ec
-  
-  @objc(verifyCertificateChain:withTrustAnchorCert:withResolver:withRejecter:)
+
+  @objc(verifyCertificateChain:withTrustAnchorBase64:withResolver:withRejecter:)
   func verifyCertificateChain(
-    certificatesChain: NSArray,
-    trustAnchorCert: String,
-    resolve:@escaping RCTPromiseResolveBlock,
-    reject:@escaping RCTPromiseRejectBlock
-  ){
-    do {
-        // Load the certificates from a Base64
-        let certificates = try certificatesChain.map { certBase64 in
-            return try IoReactNativeCrypto.loadCertificate(from: certBase64 as! String)
-        }
-        let trustAnchor = try IoReactNativeCrypto.loadCertificate(from: trustAnchorCert)
-
-        // Validate the certificate chain
-        let isValid = IoReactNativeCrypto.validateCertificateChain(certificates: certificates, trustAnchor: trustAnchor)
-
-        resolve(isValid)
-    } catch {
-        ModuleException.certificatesValidationError.reject(reject: reject, ("error", error.localizedDescription))
-    }
-  }
-
-  /// Loads a certificate from a Base64-encoded string
-  private static func loadCertificate(from base64String: String) throws -> SecCertificate {
-      guard let certData = Data(base64Encoded: base64String, options: .ignoreUnknownCharacters) else {
-          throw ModuleException.certificatesValidationError.error(userInfo: ["reason": "Invalid Base64 encoding"])
-      }
-      guard let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
-          throw ModuleException.certificatesValidationError.error(userInfo: ["reason": "Failed to create certificate"])
-      }
-      return certificate
-  }
-
-  /// Validates the given certificate chain against the trust anchor
-  static func validateCertificateChain(certificates: [SecCertificate], trustAnchor: SecCertificate) -> Bool {
-      var trust: SecTrust?
-      let policy = SecPolicyCreateBasicX509()
-      let status = SecTrustCreateWithCertificates(certificates as CFArray, policy, &trust)
-
-      guard status == errSecSuccess, let trust = trust else {
-          return false
-      }
-
-      // Set the trust anchor (Root CA)
-      let statusAnchor = SecTrustSetAnchorCertificates(trust, [trustAnchor] as CFArray)
-      guard statusAnchor == errSecSuccess else {
-          return false
-      }
-
-      // Validate trust based on iOS version
-      if #available(iOS 12.0, *) {
-          var error: CFError?
-          return SecTrustEvaluateWithError(trust, &error)
-      } else {
-          var trustResult: SecTrustResultType = .invalid
-          let evalStatus = SecTrustEvaluate(trust, &trustResult)
+      certChainBase64: NSArray,
+      trustAnchorBase64: String,
+      resolve: @escaping RCTPromiseResolveBlock,
+      reject: @escaping RCTPromiseRejectBlock
+  ) {
+      // Run on a background queue to avoid blocking the main thread
+      DispatchQueue.global(qos: .userInitiated).async {
+          // Convert NSArray to Swift array of strings
+          guard let certChain = certChainBase64 as? [String] else {
+              DispatchQueue.main.async {
+                  ModuleException.certificatesValidationError.reject(
+                      reject: reject,
+                      ("error", "Invalid certificate chain format")
+                  )
+              }
+              return
+          }
           
-          if evalStatus == errSecSuccess {
-              return (trustResult == .unspecified || trustResult == .proceed)
-          } else {
-              return false
+          // Use the utility class to validate
+          let result = X509VerificationUtils.verifyCertificateChainWithSecTrust(
+              certChainBase64: certChain,
+              trustAnchorCertBase64: trustAnchorBase64
+          )
+          
+          // Return the result as a dictionary
+          let resultDict: [String: Any] = [
+              "isValid": result.isValid,
+              "validationStatus": result.validationStatus.rawValue,
+              "errorMessage": result.errorMessage ?? ""
+          ]
+          
+          // Return to main thread to resolve the promise
+          DispatchQueue.main.async {
+              resolve(resultDict)
           }
       }
   }
