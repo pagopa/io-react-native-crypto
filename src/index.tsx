@@ -73,6 +73,30 @@ export type RSAKey = {
  */
 export type PublicKey = ECKey | RSAKey;
 
+/**
+ * Represents the status of certificate validation
+ */
+export enum CertificateValidationStatus {
+  VALID = 'VALID',
+  INVALID_CHAIN = 'INVALID_CHAIN',
+  EXPIRED = 'EXPIRED',
+  NOT_YET_VALID = 'NOT_YET_VALID',
+  REVOKED = 'REVOKED',
+  VALIDATION_ERROR = 'VALIDATION_ERROR'
+}
+
+/**
+ * Represents the result of certificate validation
+ */
+export interface CertificateValidationResult {
+  /** Whether the certificate chain is valid */
+  isValid: boolean;
+  /** The specific validation status */
+  validationStatus: CertificateValidationStatus;
+  /** Error message in case validation failed */
+  errorMessage: string;
+}
+
 const LINKING_ERROR =
   `The package '@pagopa/io-react-native-crypto' doesn't seem to be linked. Make sure: \n\n` +
   Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
@@ -172,17 +196,18 @@ export function isKeyStrongboxBacked(keyTag: string): Promise<boolean> {
 }
 
 /**
- * This function verifies a certificate chain against a trust anchor certificate.
+ * Verifies a certificate chain against a trust anchor.
  *
- * The function takes an array of certificates (`x5cChain`) and a trust anchor certificate (`trustAnchorCert`),
- * and returns a promise that resolves to a boolean indicating whether the certificate chain is valid.
- *
- * If the verification fails, the promise is rejected providing an instance of {@link CryptoError}.
- *
- * @param certificatesChain - An array of strings representing the certificate chain in Base64 format.
- * @param trustAnchorCert - A string representing the trust anchor certificate in Base64 format.
- * @returns A promise that resolves to true if the certificate chain is valid, false otherwise.
+ * @param certChainBase64 - Array of X.509 certificates in Base64 format, ordered from end-entity to issuer
+ * @param trustAnchorBase64 - Trust anchor certificate in Base64 format
+ * @returns Promise resolving to validation result with detailed status
  */
-export function verifyCertificateChain(certificatesChain: string[], trustAnchorCert: string): Promise<boolean> {
-  return IoReactNativeCrypto.verifyCertificateChain(certificatesChain, trustAnchorCert);
+export function verifyCertificateChain(
+  certChainBase64: string[],
+  trustAnchorBase64: string,
+): Promise<CertificateValidationResult> {
+  return IoReactNativeCrypto.verifyCertificateChain(
+    certChainBase64,
+    trustAnchorBase64,
+  );
 }
