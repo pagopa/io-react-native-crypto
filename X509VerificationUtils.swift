@@ -19,9 +19,6 @@ struct CertificateValidationResult {
 
 class X509VerificationUtils {
     
-    // Cache for CRLs to avoid redundant downloads
-    private static var crlCache: [String: (data: Data, fetchDate: Date)] = [:]
-    
     /// - Parameters:
     ///   - certChainBase64: Array of Base64 encoded certificates
     ///   - trustAnchorCertBase64: Base64 encoded trust anchor certificate
@@ -195,56 +192,45 @@ class X509VerificationUtils {
         // For each certificate, check if it has been revoked using CRLs
         
         for cert in certificates {
-            // Get CRL distribution points
-            let crlUrls = extractCrlDistributionPoints(from: cert)
-            
-            // If we found CRL URLs, check only the first one
-            if !crlUrls.isEmpty {
-                let url = crlUrls[0]
-                do {
-                    let crl = try downloadAndParseCRL(from: url)
-                    
-                    // Check if certificate is in the CRL
-                    if isCertificateRevoked(cert, in: crl) {
-                        return CertificateValidationResult(
-                            isValid: false,
-                            validationStatus: .REVOKED,
-                            errorMessage: "Certificate revoked: \(cert.subjectDistinguishedName ?? "Unknown")"
-                        )
-                    }
-                } catch {
-                    // TODO: IS THIS OK -> Log the error but don't fail validation just because we couldn't check the CRL
-                    print("Failed to check CRL at \(url): \(error.localizedDescription)")
+          // Get CRL distribution points
+          if let crlUrl = extractCrlDistributionPoints(from: cert) {
+            do {
+                let crl = try downloadAndParseCRL(from: crlUrl)
+                
+                // Check if certificate is in the CRL
+                if isCertificateRevoked(cert, in: crl) {
+                    return CertificateValidationResult(
+                        isValid: false,
+                        validationStatus: .REVOKED,
+                        errorMessage: "Certificate revoked: \(cert.subjectDistinguishedName ?? "Unknown")"
+                    )
                 }
+            } catch {
+              return CertificateValidationResult(
+                  isValid: false,
+                  validationStatus: .CRL_RETRIEVAL_ERROR,
+                  errorMessage: "CRL Download error: \(error.localizedDescription)"
+              )
             }
+          }
         }
-        
         return nil
     }
     
-    private static func extractCrlDistributionPoints(from cert: X509Certificate) -> [String] {
+    private static func extractCrlDistributionPoints(from cert: X509Certificate) -> String? {
         // Use the built-in extension accessor to get CRL distribution points
         if let crlExtension = cert.extensionObject(oid: OID.cRLDistributionPoints) as? X509Certificate.CRLDistributionPointsExtension,
            let crls = crlExtension.crls,
            !crls.isEmpty {
             // Return only the first URL since that's all we need
-            return [crls[0]]
+            return crls[0]
         }
         
         // Return an empty array if no CRL distribution points found
-        return []
+        return nil
     }
     
     private static func downloadAndParseCRL(from urlString: String) throws -> Data {
-        // Check if we have a cached version
-        if let cached = crlCache[urlString] {
-            // Use the cached version if it's less than 1 hour old
-            let oneHourAgo = Date().addingTimeInterval(-3600)
-            if cached.fetchDate > oneHourAgo {
-                return cached.data
-            }
-        }
-        
         // Download a fresh copy
         guard let url = URL(string: urlString) else {
             throw NSError(domain: "CRLError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid CRL URL"])
@@ -276,9 +262,6 @@ class X509VerificationUtils {
         guard let data = crlData else {
             throw NSError(domain: "CRLError", code: 3, userInfo: [NSLocalizedDescriptionKey: "No CRL data received"])
         }
-        
-        // Cache the CRL
-        crlCache[urlString] = (data, Date())
         
         return data
     }

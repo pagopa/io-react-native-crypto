@@ -2,7 +2,6 @@ package com.pagopa.ioreactnativecrypto
 
 import android.util.Base64
 import android.util.Log
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -44,7 +43,18 @@ object X509VerificationUtils {
     NOT_YET_VALID,
     REVOKED,
     VALIDATION_ERROR,
-    CRL_RETRIEVAL_ERROR
+    CRL_NOT_DEFINED,
+    CRL_EXPIRED
+  }
+
+  sealed class VerificationException: Exception() {
+    data object CRLNotDefined: VerificationException() {
+      private fun readResolve(): Any = CRLNotDefined
+    }
+
+    data object CRLExpired: VerificationException() {
+      private fun readResolve(): Any = CRLExpired
+    }
   }
 
   /**
@@ -119,21 +129,22 @@ object X509VerificationUtils {
     }
   }
 
-  private suspend fun downloadCertificateCrl(factory: CertificateFactory, cert: X509Certificate): X509CRL? {
+  private suspend fun downloadCertificateCrl(
+    factory: CertificateFactory,
+    cert: X509Certificate
+  ): X509CRL {
     val crlUrls = extractCrlDistributionPoints(cert)
-    Log.e("ERR", crlUrls.toString())
-    for (url in crlUrls) {
-      val crlBytes = downloadCrl(url)
-        val crl = factory.generateCRL(ByteArrayInputStream(crlBytes)) as X509CRL
-        // Check if CRL itself is valid (not expired)
-        if (crl.nextUpdate != null && Date().after(crl.nextUpdate)) {
-          // TODO check errors and logic after ipzs answers
-          Log.w("CertificateValidation", "CRL from $url is expired")
-          continue
-        }
-        return crl
+    if (crlUrls.isEmpty()) {
+      throw VerificationException.CRLNotDefined
     }
-    return null
+
+    val crlBytes = downloadCrl(crlUrls.first())
+    val crl = factory.generateCRL(ByteArrayInputStream(crlBytes)) as X509CRL
+    // Check if CRL itself is valid (not expired)
+    if (crl.nextUpdate != null && Date().after(crl.nextUpdate)) {
+      throw VerificationException.CRLExpired
+    }
+    return crl
   }
 
   /**
@@ -197,11 +208,8 @@ object X509VerificationUtils {
 
       // Collect all CRLs from distribution points in the certificate chain
       val crls = mutableListOf<X509CRL>()
-
       for (cert in certificateChain) {
-        downloadCertificateCrl(certificateFactory, cert)?.also {
-          crls.add(it)
-        }
+        crls.add(downloadCertificateCrl(certificateFactory, cert))
       }
 
       // Check each certificate against the CRLs
@@ -252,6 +260,23 @@ object X509VerificationUtils {
         validationStatus = CertificateValidationStatus.INVALID_CHAIN,
         errorMessage = "Certificate path validation failed: ${e.message}"
       )
+    } catch (e: VerificationException) {
+      return when (e) {
+        VerificationException.CRLExpired ->
+          CertificateValidationResult(
+            isValid = false,
+            validationStatus = CertificateValidationStatus.CRL_EXPIRED,
+            errorMessage = "CRL not defined"
+          )
+
+        VerificationException.CRLNotDefined ->
+          CertificateValidationResult(
+            isValid = false,
+            validationStatus = CertificateValidationStatus.CRL_NOT_DEFINED,
+            errorMessage = "CRL expired"
+          )
+      }
+
     } catch (e: Exception) {
       return CertificateValidationResult(
         isValid = false,
