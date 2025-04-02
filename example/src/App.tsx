@@ -126,7 +126,7 @@ export default function App() {
                 verifyCertificateChain(mockCertificateChain.x5c, mockCertificateChain.trustAnchorCert)
                   .then((result) => {
                     console.log(result);
-                    setLogText(result ? 'true' : 'false');
+                    setLogText(JSON.stringify(result));
                   })
                   .catch((reason: CryptoError) => {
                     console.log(reason);
