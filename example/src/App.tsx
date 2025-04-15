@@ -123,7 +123,10 @@ export default function App() {
             <Button
               title="verifyCertificates"
               onPress={() => {
-                verifyCertificateChain(mockCertificateChain.x5c, mockCertificateChain.trustAnchorCert)
+                verifyCertificateChain(mockCertificateChain.x5c, mockCertificateChain.trustAnchorCert, {
+                  connectTimeout: 1000,
+                  readTimeout: 1000,
+                })
                   .then((result) => {
                     console.log(result);
                     setLogText(JSON.stringify(result));

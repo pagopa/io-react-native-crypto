@@ -86,6 +86,14 @@ export enum CertificateValidationStatus {
 }
 
 /**
+ * Options for X.509 certificate validation
+ */
+export interface X509CertificateOptions {
+  connectTimeout: number;
+  readTimeout: number;
+}
+
+/**
  * Represents the result of certificate validation
  */
 export interface CertificateValidationResult {
@@ -200,14 +208,17 @@ export function isKeyStrongboxBacked(keyTag: string): Promise<boolean> {
  *
  * @param certChainBase64 - Array of X.509 certificates in Base64 format, ordered from end-entity to issuer
  * @param trustAnchorBase64 - Trust anchor certificate in Base64 format
+ * @param options - Options for certificate validation, including timeouts
  * @returns Promise resolving to validation result with detailed status
  */
 export function verifyCertificateChain(
   certChainBase64: string[],
   trustAnchorBase64: string,
+  options: X509CertificateOptions
 ): Promise<CertificateValidationResult> {
   return IoReactNativeCrypto.verifyCertificateChain(
     certChainBase64,
     trustAnchorBase64,
+    options
   );
 }
