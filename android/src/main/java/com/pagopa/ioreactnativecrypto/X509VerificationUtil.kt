@@ -3,7 +3,6 @@ package com.pagopa.ioreactnativecrypto
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.bouncycastle.asn1.DERIA5String
 import org.bouncycastle.asn1.x509.CRLDistPoint
@@ -15,6 +14,7 @@ import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder
 import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.cert.CRLException
 import java.security.cert.CertPathValidator
 import java.security.cert.CertPathValidatorException
 import java.security.cert.CertStore
@@ -27,6 +27,11 @@ import java.security.cert.TrustAnchor
 import java.security.cert.X509CRL
 import java.security.cert.X509Certificate
 import java.util.Date
+
+data class X509VerificationOptions (
+  val connectTimeout: Int = 15000,
+  val readTimeout: Int = 15000
+)
 
 /**
  * Utility class for X.509 certificate validations
@@ -44,48 +49,87 @@ object X509VerificationUtils {
     REVOKED,
     VALIDATION_ERROR,
     CRL_NOT_DEFINED,
-    CRL_EXPIRED
+    CRL_EXPIRED,
+    CRL_DOWNLOAD_ERROR,
+    CRL_GENERATION_ERROR
   }
 
   sealed class VerificationException: Exception() {
     data object CRLNotDefined: VerificationException() {
       private fun readResolve(): Any = CRLNotDefined
     }
-
     data object CRLExpired: VerificationException() {
       private fun readResolve(): Any = CRLExpired
     }
+    data object CRLDownloadError: VerificationException() {
+      private fun readResolve(): Any = CRLDownloadError
+    }
   }
 
-  /**
-   * Result class for certificate chain verification
-   */
   data class CertificateValidationResult(
     val isValid: Boolean,
     val validationStatus: CertificateValidationStatus,
     val errorMessage: String? = null
   )
 
-  /**
-   * Extracts the CRL distribution point URLs from an X509Certificate using Bouncy Castle.
-   *
-   * @param cert The X509Certificate to extract from.
-   * @return A list of CRL distribution point URLs, or an empty list if none are found.
-   */
+  private fun generateErrorMessage(
+    status: CertificateValidationStatus,
+    certificate: X509Certificate? = null,
+    exception: Throwable? = null,
+    revocationDate: Date? = null,
+    customMessage: String? = null
+  ): String? {
+    return when (status) {
+      CertificateValidationStatus.VALID ->
+        null
+
+      CertificateValidationStatus.INVALID_CHAIN -> {
+        val baseMsg = "Certificate chain validation failed"
+        val reason = customMessage ?: exception?.message
+        if (!reason.isNullOrBlank()) "$baseMsg: $reason" else baseMsg
+      }
+
+      CertificateValidationStatus.EXPIRED ->
+        "Certificate expired: ${certificate?.subjectX500Principal ?: "Unknown certificate"}"
+
+      CertificateValidationStatus.NOT_YET_VALID ->
+        "Certificate not yet valid: ${certificate?.subjectX500Principal ?: "Unknown certificate"}"
+
+      CertificateValidationStatus.REVOKED -> {
+        val subject = certificate?.subjectX500Principal ?: "Unknown certificate"
+        val dateInfo = if (revocationDate != null) ", revocation date: $revocationDate" else ""
+        "Certificate revoked: $subject $dateInfo"
+      }
+
+      CertificateValidationStatus.VALIDATION_ERROR ->
+        "Validation error: ${exception?.message ?: "An unknown error occurred during validation"}"
+
+      CertificateValidationStatus.CRL_NOT_DEFINED -> {
+        val subjectInfo = if(certificate != null) " in certificate ${certificate.subjectX500Principal}" else ""
+        "CRL distribution point not defined $subjectInfo."
+      }
+
+      CertificateValidationStatus.CRL_EXPIRED -> {
+        "CRL used for validation has expired."
+      }
+      CertificateValidationStatus.CRL_GENERATION_ERROR -> {
+        "CRL generation failed."
+      }
+      CertificateValidationStatus.CRL_DOWNLOAD_ERROR -> {
+        "CRL download failed."
+      }
+    }
+  }
+
   private fun extractCrlDistributionPoints(cert: X509Certificate): List<String> {
     try {
-      // Create a Bouncy Castle certificate object from the X509Certificate
       val bcCert = JcaX509CertificateHolder(cert)
-
-      // Get the CRL distribution points extension
       val distPoints = bcCert.getExtension(Extension.cRLDistributionPoints)
         ?: return emptyList()
 
-      // Parse the extension value
       val dpObj = CRLDistPoint.getInstance(distPoints.parsedValue)
       val urls = mutableListOf<String>()
 
-      // Process each distribution point
       for (dp in dpObj.distributionPoints) {
         val distPointName = dp.distributionPoint
         if (distPointName != null && distPointName.type == DistributionPointName.FULL_NAME) {
@@ -98,7 +142,6 @@ object X509VerificationUtils {
           }
         }
       }
-
       return urls
     } catch (e: Exception) {
       Log.e("CertificateValidation", "Error extracting CRL distribution points", e)
@@ -110,13 +153,15 @@ object X509VerificationUtils {
    * Downloads a CRL from a URL.
    *
    * @param url The URL to download the CRL from.
+   * @param connectTimeout Optional connection timeout (default 15000ms)
+   * @param readTimeout Optional read timeout (default 15000ms)
    * @return The downloaded CRL as a byte array, or null if download failed.
    */
-  private suspend fun downloadCrl(url: String): ByteArray {
+  private suspend fun downloadCrl(url: String, options: X509VerificationOptions): ByteArray {
     return withContext(Dispatchers.IO) {
       val connection = (URL(url).openConnection() as HttpURLConnection).also {
-        it.connectTimeout = 15000
-        it.readTimeout = 15000
+        it.connectTimeout = options.connectTimeout
+        it.readTimeout = options.readTimeout
         it.requestMethod = "GET"
       }
 
@@ -124,27 +169,40 @@ object X509VerificationUtils {
       if (responseCode == HttpURLConnection.HTTP_OK) {
         connection.inputStream.use { it.readBytes() }
       } else {
-        throw Exception("CRL Download failed")
+        throw Exception("CRL Download failed with status code $responseCode for URL $url")
       }
     }
   }
 
   private suspend fun downloadCertificateCrl(
     factory: CertificateFactory,
-    cert: X509Certificate
-  ): X509CRL {
+    cert: X509Certificate,
+    options: X509VerificationOptions
+  ): X509CRL? {
     val crlUrls = extractCrlDistributionPoints(cert)
     if (crlUrls.isEmpty()) {
-      throw VerificationException.CRLNotDefined
+      return null
     }
 
-    val crlBytes = downloadCrl(crlUrls.first())
-    val crl = factory.generateCRL(ByteArrayInputStream(crlBytes)) as X509CRL
-    // Check if CRL itself is valid (not expired)
-    if (crl.nextUpdate != null && Date().after(crl.nextUpdate)) {
-      throw VerificationException.CRLExpired
+    for (url in crlUrls) {
+      try {
+        val crlBytes = downloadCrl(url, options)
+        val crl = factory.generateCRL(ByteArrayInputStream(crlBytes)) as X509CRL
+
+        // Check if CRL itself is valid (not expired)
+        // TODO: verify if we need to strictly check for this condition
+        if (crl.nextUpdate != null && Date().after(crl.nextUpdate)) {
+          throw VerificationException.CRLExpired
+        }
+        return crl
+      } catch (e: Exception) {
+        when (e) {
+          is VerificationException.CRLExpired -> CertificateValidationStatus.CRL_EXPIRED
+          is CRLException -> CertificateValidationStatus.CRL_GENERATION_ERROR
+        }
+      }
     }
-    return crl
+    throw VerificationException.CRLDownloadError
   }
 
   /**
@@ -155,53 +213,55 @@ object X509VerificationUtils {
    * @param trustAnchorCertBase64 A Base64-encoded trust anchor certificate.
    * @return A CertificateValidationResult with validation status and details.
    */
-  private suspend fun verifyCertificateChainAsync(
+  suspend fun verifyCertificateChain(
     certChainBase64: List<String>,
-    trustAnchorCertBase64: String
+    trustAnchorCertBase64: String,
+    options: X509VerificationOptions
   ): CertificateValidationResult {
     try {
 
-      // Pre-check to verify that the last chain certificate and the TA cert are the same
-      if (certChainBase64.last() != trustAnchorCertBase64) {
+      val trustAnchorBytes = Base64.decode(trustAnchorCertBase64, Base64.DEFAULT)
+      val lastCertBytes = certChainBase64.lastOrNull() ?. let {
+        Base64.decode(it, Base64.DEFAULT)
+      }
+
+      if (!lastCertBytes.contentEquals(trustAnchorBytes)) {
+        val status = CertificateValidationStatus.INVALID_CHAIN
         return CertificateValidationResult(
           isValid = false,
-          validationStatus = CertificateValidationStatus.INVALID_CHAIN,
-          errorMessage = "Invalid Trust Anchor certificate"
+          validationStatus = status,
+          errorMessage = generateErrorMessage(status, customMessage = "The provided trust anchor does not match the last certificate in the chain.")
         )
       }
 
-      // Create a CertificateFactory for X.509 certificates.
       val certificateFactory = CertificateFactory.getInstance("X.509")
-
-      // Decode the trust anchor certificate.
-      val trustAnchorBytes = Base64.decode(trustAnchorCertBase64, Base64.DEFAULT)
       val trustAnchorCert = certificateFactory.generateCertificate(
         ByteArrayInputStream(trustAnchorBytes)
       ) as X509Certificate
       val trustAnchor = TrustAnchor(trustAnchorCert, null)
 
-      // Decode each certificate from the certificatesChain.
       val certificateChain = certChainBase64.map { certBase64 ->
         val certBytes = Base64.decode(certBase64, Base64.DEFAULT)
         certificateFactory.generateCertificate(ByteArrayInputStream(certBytes)) as X509Certificate
       }
 
-      // Check certificate validity dates
       val now = Date()
       for (cert in certificateChain) {
         try {
           cert.checkValidity(now)
         } catch (e: CertificateExpiredException) {
+          val status = CertificateValidationStatus.EXPIRED
           return CertificateValidationResult(
             isValid = false,
-            validationStatus = CertificateValidationStatus.EXPIRED,
-            errorMessage = "Certificate expired: ${cert.subjectX500Principal}"
+            validationStatus = status,
+            errorMessage = generateErrorMessage(status, certificate = cert)
           )
         } catch (e: CertificateNotYetValidException) {
+          val status = CertificateValidationStatus.NOT_YET_VALID
           return CertificateValidationResult(
             isValid = false,
-            validationStatus = CertificateValidationStatus.NOT_YET_VALID,
-            errorMessage = "Certificate not yet valid: ${cert.subjectX500Principal}"
+            validationStatus = status,
+            errorMessage = generateErrorMessage(status, certificate = cert)
           )
         }
       }
@@ -209,7 +269,7 @@ object X509VerificationUtils {
       // Collect all CRLs from distribution points in the certificate chain
       val crls = mutableListOf<X509CRL>()
       for (cert in certificateChain) {
-        crls.add(downloadCertificateCrl(certificateFactory, cert))
+        downloadCertificateCrl(certificateFactory, cert, options)?.let { crls.add(it) }
       }
 
       // Check each certificate against the CRLs
@@ -254,47 +314,34 @@ object X509VerificationUtils {
         isValid = true,
         validationStatus = CertificateValidationStatus.VALID
       )
+
     } catch (e: CertPathValidatorException) {
+      val status = CertificateValidationStatus.INVALID_CHAIN
       return CertificateValidationResult(
         isValid = false,
-        validationStatus = CertificateValidationStatus.INVALID_CHAIN,
-        errorMessage = "Certificate path validation failed: ${e.message}"
+        validationStatus = status,
+        errorMessage = generateErrorMessage(status, exception = e)
       )
     } catch (e: VerificationException) {
-      return when (e) {
-        VerificationException.CRLExpired ->
-          CertificateValidationResult(
-            isValid = false,
-            validationStatus = CertificateValidationStatus.CRL_EXPIRED,
-            errorMessage = "CRL not defined"
-          )
-
-        VerificationException.CRLNotDefined ->
-          CertificateValidationResult(
-            isValid = false,
-            validationStatus = CertificateValidationStatus.CRL_NOT_DEFINED,
-            errorMessage = "CRL expired"
-          )
+      val status = when (e) {
+        is VerificationException.CRLExpired -> CertificateValidationStatus.CRL_EXPIRED
+        is VerificationException.CRLNotDefined -> CertificateValidationStatus.CRL_NOT_DEFINED
+        is VerificationException.CRLDownloadError -> CertificateValidationStatus.CRL_DOWNLOAD_ERROR
       }
 
-    } catch (e: Exception) {
       return CertificateValidationResult(
         isValid = false,
-        validationStatus = CertificateValidationStatus.VALIDATION_ERROR,
-        errorMessage = "Validation error: ${e.message}"
+        validationStatus = status,
+        errorMessage = generateErrorMessage(status)
       )
-    }
-  }
-
-  /**
-   * Public method to verify certificate chains with synchronous API
-   */
-  fun verifyCertificateChain(
-    certChainBase64: List<String>,
-    trustAnchorCertBase64: String
-  ): CertificateValidationResult {
-    return runBlocking {
-      verifyCertificateChainAsync(certChainBase64, trustAnchorCertBase64)
+    } catch (e: Exception) {
+      val status = CertificateValidationStatus.VALIDATION_ERROR
+      Log.e("CertificateValidation", "An unexpected error occurred during certificate verification", e)
+      return CertificateValidationResult(
+        isValid = false,
+        validationStatus = status,
+        errorMessage = generateErrorMessage(status, exception = e)
+      )
     }
   }
 }

@@ -7,6 +7,11 @@ import android.security.keystore.KeyProperties.*
 import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.io.ByteArrayInputStream
 import java.security.*
 import java.security.cert.CertPathValidator
@@ -22,6 +27,11 @@ import java.security.spec.RSAKeyGenParameterSpec
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
+
+  // Create a CoroutineScope tied to the IO dispatcher for background work.
+  // Use SupervisorJob so if one job fails, it doesn't cancel the whole scope.
+  // IMPORTANT: Cancel this scope when the module is destroyed to avoid leaks.
+  private val moduleScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
   var threadHandle: Thread? = null
 
@@ -465,29 +475,47 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   fun verifyCertificateChain(
     certChainBase64: ReadableArray,
     trustAnchorBase64: String,
+    options: ReadableMap,
     promise: Promise
   ) {
-    try {
-      // Convert ReadableArray to a List<String>
-      val chain: List<String> = certChainBase64.toArrayList().map { it.toString() }
+    // Launch a coroutine in the module's scope
+    moduleScope.launch {
+      try {
+        // Convert ReadableArray to a List<String>
+        val chain: List<String> = certChainBase64.toArrayList().map { it.toString() }
+        // Convert ReadableMap to a X509VerificationOptions data class
+        val connectTimeout = if (options.hasKey("connectTimeout")) options.getInt("connectTimeout") else 0
+        val readTimeout = if (options.hasKey("readTimeout")) options.getInt("readTimeout") else 0
+        val convertedOptions = X509VerificationOptions(connectTimeout = connectTimeout, readTimeout = readTimeout)
+        // Call the suspend function from within the coroutine
+        val result = X509VerificationUtils.verifyCertificateChain(chain, trustAnchorBase64, convertedOptions)
 
-      // Use the utility class to validate
-      val result = X509VerificationUtils.verifyCertificateChain(chain, trustAnchorBase64)
+        // Prepare the result map
+        val resultMap = Arguments.createMap().apply {
+          putBoolean("isValid", result.isValid)
+          putString("errorMessage", result.errorMessage ?: "") // Handle potential null message
+          putString("validationStatus", result.validationStatus.name) // Send enum name as string
+        }
+        // Resolve the promise with the successful result map
+        promise.resolve(resultMap)
 
-      // Return detailed result as a map
-      val resultMap = Arguments.createMap().apply {
-        putBoolean("isValid", result.isValid)
-        putString("errorMessage", result.errorMessage ?: "")
-        putString("validationStatus", result.validationStatus.name)
+      } catch (e: Exception) {
+        // Catch any exception during conversion or validation
+        // Reject the promise using your existing error handling mechanism
+        ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(
+          promise,
+          Pair(ERROR_USER_INFO_KEY, e.message ?: "Unknown error during certificate validation")
+        )
       }
-      promise.resolve(resultMap)
-    } catch (e: Exception) {
-      ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(
-        promise,
-        Pair(ERROR_USER_INFO_KEY, e.message ?: "Unknown error during certificate validation")
-      )
     }
   }
+
+  // This is crucial to prevent coroutine leaks.
+  override fun invalidate() {
+    super.invalidate()
+    moduleScope.cancel() // Cancel all coroutines launched within this scope
+  }
+
 
   companion object {
     const val NAME = "IoReactNativeCrypto"
