@@ -18,7 +18,7 @@ struct ValidationResult {
   let status: ValidationStatus
   let errorMessage: String?
   let failingCertificateInfo: [String: String]?
-  
+
   // Helper to convert to a Dictionary suitable for React Native
   func toDictionary() -> [String: Any] {
     var dict: [String: Any] = [
@@ -46,10 +46,10 @@ struct X509VerificationOptions {
 }
 
 class X509VerificationUtils {
-  
+
   static let shared = X509VerificationUtils()
   private init() {} // Singleton pattern
-  
+
   // --- Main Verification Function ---
   func verifyCertificateChain(
     certChainBase64: [String],
@@ -57,11 +57,11 @@ class X509VerificationUtils {
     options: X509VerificationOptions,
     completion: @escaping (ValidationResult) -> Void
   ) {
-    
+
     // --- 1. Decode Certificates and Trust Anchor ---
     var certificateChainObjects: [SecCertificate] = []
     var trustAnchorCert: SecCertificate?
-    
+
     // Decode Trust Anchor
     guard let taData = Data(base64Encoded: trustAnchorCertBase64, options: .ignoreUnknownCharacters) else {
       let errorMsg = "Failed Data(base64Encoded:) for trust anchor."
@@ -74,25 +74,25 @@ class X509VerificationUtils {
       return
     }
     trustAnchorCert = taCert
-    
+
     // Decode Certificate Chain with separated checks
     for (index, certBase64) in certChainBase64.enumerated() {
-      
+
       guard let certData = Data(base64Encoded: certBase64, options: .ignoreUnknownCharacters) else {
         let errorMsg = "Failed Data(base64Encoded:) for certificate at index \(index)."
         completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: ["index": String(index)]))
         return
       }
-      
+
       guard let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
         let errorMsg = "Failed SecCertificateCreateWithData for certificate at index \(index). Decoded data might not be valid DER."
         completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: ["index": String(index)]))
         return
       }
-      
-      certificateChainObjects.append(certificate) // Aggiungi l'oggetto decodificato
+
+      certificateChainObjects.append(certificate)
     }
-    
+
     if certificateChainObjects.isEmpty && !certChainBase64.isEmpty {
       let errorMsg = "Certificate chain object array is empty after decoding loop, although input was not empty."
       completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: nil))
@@ -103,14 +103,14 @@ class X509VerificationUtils {
       completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
       return
     }
-    
+
     // --- 2. Perform Trust Evaluation ---
     evaluateTrust(certificateChain: certificateChainObjects, trustAnchor: anchor) { result in
       completion(result)
     }
   }
-  
-  
+
+
   // --- Trust Evaluation Helper ---
   private func evaluateTrust(
     certificateChain: [SecCertificate],
@@ -118,23 +118,23 @@ class X509VerificationUtils {
     completion: @escaping (ValidationResult) -> Void
   ) {
     var optionalTrust: SecTrust?
-    
+
     // --- Define Policies ---
     let basicX509Policy = SecPolicyCreateBasicX509()
     let revocationPolicyFlags = kSecRevocationUseAnyAvailableMethod // Soft fail
     // let revocationPolicyFlags = kSecRevocationUseAnyAvailableMethod | kSecRevocationRequirePositiveResponse // Hard fail
     let revocationPolicy = SecPolicyCreateRevocation(revocationPolicyFlags)
-    
+
     let policyRefs: [SecPolicy?] = [basicX509Policy, revocationPolicy]
     let policies: [SecPolicy] = policyRefs.compactMap { $0 }
-    
+
     let expectedPolicyCount = 2
     if policies.count != expectedPolicyCount {
       let errorMsg = "Failed to create required SecPolicy objects (Expected \(expectedPolicyCount), Created: \(policies.count))."
       completion(ValidationResult(isValid: false, status: .validationError, errorMessage: errorMsg, failingCertificateInfo: nil))
       return
     }
-    
+
     // --- Create SecTrust Object ---
     let createStatus = SecTrustCreateWithCertificates(certificateChain as CFArray, policies as CFArray, &optionalTrust)
     guard createStatus == errSecSuccess, let trust = optionalTrust else {
@@ -142,7 +142,7 @@ class X509VerificationUtils {
       completion(ValidationResult(isValid: false, status: .validationError, errorMessage: errorMsg, failingCertificateInfo: nil))
       return
     }
-    
+
     // --- Configure Trust Object ---
     let anchorArray = [trustAnchor] as CFArray
     let setAnchorStatus = SecTrustSetAnchorCertificates(trust, anchorArray)
@@ -158,16 +158,16 @@ class X509VerificationUtils {
       completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: anchorInfo))
       return
     }
-    
+
     // --- Evaluate Trust Asynchronously ---
     SecTrustEvaluateAsyncWithError(trust, DispatchQueue.global(qos: .userInitiated)) { secTrust, success, error in
       let currentTrust = secTrust
-      
+
       var evaluationResult: ValidationResult
       if success {
         var trustResultType: SecTrustResultType = .invalid
         let getResultStatus = SecTrustGetTrustResult(currentTrust, &trustResultType)
-        
+
         if getResultStatus == errSecSuccess && (trustResultType == .proceed || trustResultType == .unspecified) {
           evaluationResult = ValidationResult(isValid: true, status: .valid, errorMessage: nil, failingCertificateInfo: nil)
         } else {
@@ -179,19 +179,19 @@ class X509VerificationUtils {
         SecTrustGetTrustResult(currentTrust, &trustResultType)
         evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, error: error)
       }
-      
+
       DispatchQueue.main.async {
         completion(evaluationResult)
       }
     }
   }
-  
+
   // --- Error Mapping Helper ---
   private func mapErrorToValidationResult(trust: SecTrust, resultType: SecTrustResultType, error: Error?) -> ValidationResult {
     var finalStatus: ValidationStatus = .invalidChainPath // Start with a generic failure
     var finalMessage: String = "Certificate chain validation failed."
     var contextCertInfo: [String: String]? = nil
-    
+
     // --- Get Leaf Certificate Info for Context ---
     var evaluatedChain: [SecCertificate]? = nil
     if #available(iOS 15.0, macOS 12.0, tvOS 15.0, watchOS 8.0, *) {
@@ -214,7 +214,7 @@ class X509VerificationUtils {
       contextCertInfo = getCertificateInfo(leafCert)
     }
     // --- End Leaf Certificate Info ---
-    
+
     // --- Determine Status based on Error Code first ---
     if let nsError = error as NSError? {
       finalMessage = nsError.localizedDescription
@@ -256,7 +256,7 @@ class X509VerificationUtils {
     }
     return ValidationResult(isValid: false, status: finalStatus, errorMessage: finalMessage, failingCertificateInfo: contextCertInfo)
   }
-  
+
   // Helper to extract basic info from a certificate
   private func getCertificateInfo(_ certificate: SecCertificate) -> [String: String] {
     var info: [String: String] = [:]
