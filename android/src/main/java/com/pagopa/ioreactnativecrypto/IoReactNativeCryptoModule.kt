@@ -478,42 +478,86 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     options: ReadableMap,
     promise: Promise
   ) {
-    // Launch a coroutine in the module's scope
-    moduleScope.launch {
+    moduleScope.launch { // Launch in module's coroutine scope
       try {
-        // Convert ReadableArray to a List<String>
-        val chain: List<String> = certChainBase64.toArrayList().map { it.toString() }
-        // Convert ReadableMap to a X509VerificationOptions data class
-        val connectTimeout = if (options.hasKey("connectTimeout")) options.getInt("connectTimeout") else 0
-        val readTimeout = if (options.hasKey("readTimeout")) options.getInt("readTimeout") else 0
-        val convertedOptions = X509VerificationOptions(connectTimeout = connectTimeout, readTimeout = readTimeout)
-        // Call the suspend function from within the coroutine
-        val result = X509VerificationUtils.verifyCertificateChain(chain, trustAnchorBase64, convertedOptions)
+        // 1. Convert ReadableArray to List<String> safely
+        val chainList: List<String> = mutableListOf<String>().apply {
+          for (i in 0 until certChainBase64.size()) {
+            add(certChainBase64.getString(i))
+          }
+        }
 
-        // Prepare the result map
+        if (chainList.isEmpty()) {
+          throw IllegalArgumentException("Certificate chain array is empty.")
+        }
+
+        // 2. Parse options with defaults
+        // Use default values from X509VerificationOptions if keys are missing
+        val connectTimeout = options.takeIf { it.hasKey("connectTimeout") }?.getInt("connectTimeout")
+          ?: X509VerificationOptions().connectTimeout // Default from data class
+        val readTimeout = options.takeIf { it.hasKey("readTimeout") }?.getInt("readTimeout")
+          ?: X509VerificationOptions().readTimeout // Default from data class
+
+        val verificationOptions = X509VerificationOptions(
+          connectTimeout = connectTimeout,
+          readTimeout = readTimeout
+        )
+
+        // 3. Call the utility function
+        val result: X509VerificationUtils.ValidationResult = X509VerificationUtils.verifyCertificateChain(
+          certChainBase64 = chainList,
+          trustAnchorCertBase64 = trustAnchorBase64,
+          options = verificationOptions
+        )
+
+        // 4. Prepare the result map for React Native
         val resultMap = Arguments.createMap().apply {
           putBoolean("isValid", result.isValid)
-          putString("errorMessage", result.errorMessage ?: "") // Handle potential null message
-          putString("validationStatus", result.validationStatus.name) // Send enum name as string
+          putString("status", result.status.name)
+          putString("errorMessage", result.errorMessage ?: "")
+
+          result.failingCertificate?.let { cert ->
+            try {
+              val failingCertMap = Arguments.createMap().apply {
+                putString("subjectDN", cert.subjectX500Principal?.name ?: "Unknown")
+                putString("issuerDN", cert.issuerX500Principal?.name ?: "Unknown")
+                putString("serialNumber", cert.serialNumber?.toString() ?: "Unknown")
+                putString("notBefore", cert.notBefore?.toString() ?: "Unknown")
+                putString("notAfter", cert.notAfter?.toString() ?: "Unknown")
+              }
+              putMap("failingCertificate", failingCertMap)
+            } catch (certEx: Exception) {
+              putString("failingCertificateError", "Could not retrieve details: ${certEx.message}")
+            }
+          }
         }
-        // Resolve the promise with the successful result map
+
+        // 5. Resolve the promise
         promise.resolve(resultMap)
 
-      } catch (e: Exception) {
-        // Catch any exception during conversion or validation
-        // Reject the promise using your existing error handling mechanism
+      } catch (e: IllegalArgumentException) {
+        // Catch errors from parsing inputs (ReadableArray, ReadableMap)
         ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(
           promise,
-          Pair(ERROR_USER_INFO_KEY, e.message ?: "Unknown error during certificate validation")
+          Pair(ERROR_USER_INFO_KEY, "Invalid input arguments: ${e.message}")
+        )
+      }
+      catch (e: Exception) {
+        // Catch any other unexpected exception during the bridge call or validation setup
+        ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(
+          promise,
+          Pair(ERROR_USER_INFO_KEY, e.message ?: "Unknown error during certificate validation bridge call")
         )
       }
     }
   }
 
-  // This is crucial to prevent coroutine leaks.
+  // Cleaning up the coroutine scope when the module is destroyed
   override fun invalidate() {
     super.invalidate()
     moduleScope.cancel() // Cancel all coroutines launched within this scope
+    threadHandle?.interrupt()
+    threadHandle = null
   }
 
 
