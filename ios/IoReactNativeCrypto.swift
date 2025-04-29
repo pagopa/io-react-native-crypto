@@ -3,44 +3,41 @@ class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
   private let keyConfig: KeyConfig = .ec
 
-  @objc(verifyCertificateChain:withTrustAnchorBase64:withResolver:withRejecter:)
+  @objc(verifyCertificateChain:withTrustAnchorBase64:withOptions:withResolver:withRejecter:)
   func verifyCertificateChain(
-      certChainBase64: NSArray,
-      trustAnchorBase64: String,
-      resolve: @escaping RCTPromiseResolveBlock,
-      reject: @escaping RCTPromiseRejectBlock
+    certChainBase64: NSArray,
+    trustAnchorBase64: String,
+    optionsDict: NSDictionary,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
   ) {
-      // Run on a background queue to avoid blocking the main thread
-      DispatchQueue.global(qos: .userInitiated).async {
-          // Convert NSArray to Swift array of strings
-          guard let certChain = certChainBase64 as? [String] else {
-              DispatchQueue.main.async {
-                  ModuleException.certificatesValidationError.reject(
-                      reject: reject,
-                      ("error", "Invalid certificate chain format")
-                  )
-              }
-              return
-          }
-          
-          // Use the utility class to validate
-          let result = X509VerificationUtils.verifyCertificateChainWithSecTrust(
-              certChainBase64: certChain,
-              trustAnchorCertBase64: trustAnchorBase64
-          )
-          
-          // Return the result as a dictionary
-          let resultDict: [String: Any] = [
-              "isValid": result.isValid,
-              "validationStatus": result.validationStatus.rawValue,
-              "errorMessage": result.errorMessage ?? ""
-          ]
-          
-          // Return to main thread to resolve the promise
-          DispatchQueue.main.async {
-              resolve(resultDict)
-          }
+    DispatchQueue.global(qos: .userInitiated).async {
+      guard let certChain = certChainBase64 as? [String] else {
+        DispatchQueue.main.async {
+          let errorInfo = ["message": "Invalid certificate chain format passed from React Native."]
+          reject("E_INVALID_ARGS", "Invalid certificate chain format", NSError(domain: "X509VerificationUtils", code: 1001, userInfo: errorInfo))
+        }
+        return
       }
+      
+      let connectTimeoutOpt = optionsDict["connectTimeout"] as? Int ?? 15000
+      let readTimeoutOpt = optionsDict["readTimeout"] as? Int ?? 15000
+      let verificationOptions = X509VerificationOptions(
+        connectTimeout: connectTimeoutOpt,
+        readTimeout: readTimeoutOpt
+      )
+      
+      X509VerificationUtils.shared.verifyCertificateChain(
+        certChainBase64: certChain,
+        trustAnchorCertBase64: trustAnchorBase64,
+        options: verificationOptions
+      ) { validationResult in
+        let resultDict = validationResult.toDictionary()
+        DispatchQueue.main.async {
+          resolve(resultDict)
+        }
+      }
+    }
   }
   
   @objc(generate:withResolver:withRejecter:)

@@ -1,309 +1,266 @@
 import Foundation
-import ASN1Decoder
+import Security
 
-enum CertificateValidationStatus: String {
-    case VALID
-    case INVALID_CHAIN
-    case EXPIRED
-    case NOT_YET_VALID
-    case REVOKED
-    case VALIDATION_ERROR
-    case CRL_RETRIEVAL_ERROR
+
+enum ValidationStatus: String, CaseIterable {
+  case valid = "VALID"
+  case invalidChainPath = "INVALID_CHAIN_PATH" // Generic chain building/validation issue OR specific decoding/creation failure
+  case invalidTrustAnchor = "INVALID_TRUST_ANCHOR" // Anchor cert decode failed or wasn't trusted by SecTrustSetAnchorCertificates
+  case certificateExpired = "CERTIFICATE_EXPIRED"
+  case certificateNotYetValid = "CERTIFICATE_NOT_YET_VALID" // Note: May sometimes report as general trust error
+  // NOTE: Covers various revocation issues: confirmed revoked, fetch fail, parse fail etc.
+  case certificateRevoked = "CERTIFICATE_REVOKED" // Includes inability to check if kSecRevocationRequirePositiveResponse is used
+  case validationError = "VALIDATION_ERROR" // General error during the validation process setup or unexpected issue
 }
 
-struct CertificateValidationResult {
-    let isValid: Bool
-    let validationStatus: CertificateValidationStatus
-    let errorMessage: String?
+struct ValidationResult {
+  let isValid: Bool
+  let status: ValidationStatus
+  let errorMessage: String?
+  let failingCertificateInfo: [String: String]?
+  
+  // Helper to convert to a Dictionary suitable for React Native
+  func toDictionary() -> [String: Any] {
+    var dict: [String: Any] = [
+      "isValid": isValid,
+      "status": status.rawValue,
+      "errorMessage": errorMessage ?? ""
+    ]
+    if let certInfo = failingCertificateInfo {
+      var infoWithContext = certInfo
+      if infoWithContext["context"] == nil && infoWithContext["index"] == nil {
+        infoWithContext["context"] = "Leaf certificate info provided (actual failure point may differ)"
+      } else if let index = infoWithContext["index"] {
+        infoWithContext["context"] = "Certificate at index \(index) in provided chain"
+      }
+      dict["failingCertificate"] = infoWithContext
+    }
+    return dict
+  }
+}
+
+struct X509VerificationOptions {
+  // Note: Timeouts are informational only in Swift SecTrust context
+  let connectTimeout: Int
+  let readTimeout: Int
 }
 
 class X509VerificationUtils {
+  
+  static let shared = X509VerificationUtils()
+  private init() {} // Singleton pattern
+  
+  // --- Main Verification Function ---
+  func verifyCertificateChain(
+    certChainBase64: [String],
+    trustAnchorCertBase64: String,
+    options: X509VerificationOptions,
+    completion: @escaping (ValidationResult) -> Void
+  ) {
     
-    /// - Parameters:
-    ///   - certChainBase64: Array of Base64 encoded certificates
-    ///   - trustAnchorCertBase64: Base64 encoded trust anchor certificate
-    /// - Returns: CertificateValidationResult with validation status and details
-    static func verifyCertificateChainWithSecTrust(certChainBase64: [String], trustAnchorCertBase64: String) -> CertificateValidationResult {
-        // Pre-check to verify that the last chain certificate and the TA cert are the same
-        if certChainBase64.last != trustAnchorCertBase64 {
-            return CertificateValidationResult(
-                isValid: false,
-                validationStatus: .INVALID_CHAIN,
-                errorMessage: "Invalid Trust Anchor certificate"
-            )
-        }
-        
-        // 1. Convert all certificates to SecCertificate objects
-        var secCertificates: [SecCertificate] = []
-        for certBase64 in certChainBase64 {
-            guard let certData = Data(base64Encoded: certBase64) else {
-                return CertificateValidationResult(
-                    isValid: false,
-                    validationStatus: .VALIDATION_ERROR,
-                    errorMessage: "Failed to decode certificate from base64"
-                )
-            }
-            
-            guard let secCertificate = SecCertificateCreateWithData(nil, certData as CFData) else {
-                return CertificateValidationResult(
-                    isValid: false,
-                    validationStatus: .VALIDATION_ERROR,
-                    errorMessage: "Failed to create SecCertificate"
-                )
-            }
-            
-            secCertificates.append(secCertificate)
-        }
-        
-        // 2. Create a trust object for the certificates
-        var trust: SecTrust?
-        var secTrustResult = SecTrustCreateWithCertificates(secCertificates as CFArray, nil, &trust)
-        
-        guard secTrustResult == errSecSuccess, let secTrust = trust else {
-            return CertificateValidationResult(
-                isValid: false,
-                validationStatus: .VALIDATION_ERROR,
-                errorMessage: "Failed to create SecTrust object: \(secTrustResult)"
-            )
-        }
-        
-        // 3. Configure trust evaluation
-        // Set the trust anchor cert as the anchor
-        if let trustAnchorData = Data(base64Encoded: trustAnchorCertBase64),
-           let trustAnchorSecCert = SecCertificateCreateWithData(nil, trustAnchorData as CFData) {
-            
-            // Create a policy for X.509 basic validation
-            let policy = SecPolicyCreateBasicX509()
-            
-            // Set trust anchor and policy
-            secTrustResult = SecTrustSetAnchorCertificates(secTrust, [trustAnchorSecCert] as CFArray)
-            guard secTrustResult == errSecSuccess else {
-                return CertificateValidationResult(
-                    isValid: false,
-                    validationStatus: .VALIDATION_ERROR,
-                    errorMessage: "Failed to set anchor certificate: \(secTrustResult)"
-                )
-            }
-            
-            secTrustResult = SecTrustSetPolicies(secTrust, policy)
-            guard secTrustResult == errSecSuccess else {
-                return CertificateValidationResult(
-                    isValid: false,
-                    validationStatus: .VALIDATION_ERROR,
-                    errorMessage: "Failed to set trust policies: \(secTrustResult)"
-                )
-            }
-        }
-        
-        // 4. Evaluate trust
-        var error: CFError?
-        let trustValid = SecTrustEvaluateWithError(secTrust, &error)
-        
-        if !trustValid {
-            let errorMessage = error != nil ?
-                CFErrorCopyDescription(error) as String? ?? "Unknown error" :
-                "Trust validation failed"
-            
-            // Determine the specific validation status
-            let status: CertificateValidationStatus
-            
-            if let error = error {
-                let errorCode = CFErrorGetCode(error)
-                
-                if errorCode == errSecCertificateExpired {
-                    status = .EXPIRED
-                } else if errorCode == errSecCertificateNotValidYet {
-                    status = .NOT_YET_VALID
-                } else {
-                    status = .INVALID_CHAIN
-                }
-            } else {
-                status = .INVALID_CHAIN
-            }
-            
-            return CertificateValidationResult(
-                isValid: false,
-                validationStatus: status,
-                errorMessage: errorMessage
-            )
-        }
-        
-        // 5. If SecTrust validation passed, check for revocation using CRLs
-        // Decode certificates using ASN1Decoder for CRL checking
-        var certificateChain: [X509Certificate] = []
-        for certBase64 in certChainBase64 {
-            guard let certData = Data(base64Encoded: certBase64) else {
-                continue
-            }
-            
-            do {
-                let cert = try X509Certificate(data: certData)
-                certificateChain.append(cert)
-            } catch {
-                // Skip certificates that can't be parsed with ASN1Decoder
-                continue
-            }
-        }
-        
-        // Check for certificate revocation using CRLs
-        if !certificateChain.isEmpty {
-            let crlResult = checkCertificateRevocation(certificates: certificateChain)
-            if crlResult != nil {
-                return crlResult!
-            }
-        }
-        
-        // All checks passed
-        return CertificateValidationResult(
-            isValid: true,
-            validationStatus: .VALID,
-            errorMessage: nil
-        )
+    // --- 1. Decode Certificates and Trust Anchor ---
+    var certificateChainObjects: [SecCertificate] = []
+    var trustAnchorCert: SecCertificate?
+    
+    // Decode Trust Anchor
+    guard let taData = Data(base64Encoded: trustAnchorCertBase64, options: .ignoreUnknownCharacters) else {
+      let errorMsg = "Failed Data(base64Encoded:) for trust anchor."
+      completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
+      return
+    }
+    guard let taCert = SecCertificateCreateWithData(nil, taData as CFData) else {
+      let errorMsg = "Failed SecCertificateCreateWithData for trust anchor. Decoded data might not be valid DER."
+      completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
+      return
+    }
+    trustAnchorCert = taCert
+    
+    // Decode Certificate Chain with separated checks
+    for (index, certBase64) in certChainBase64.enumerated() {
+      
+      guard let certData = Data(base64Encoded: certBase64, options: .ignoreUnknownCharacters) else {
+        let errorMsg = "Failed Data(base64Encoded:) for certificate at index \(index)."
+        completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: ["index": String(index)]))
+        return
+      }
+      
+      guard let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
+        let errorMsg = "Failed SecCertificateCreateWithData for certificate at index \(index). Decoded data might not be valid DER."
+        completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: ["index": String(index)]))
+        return
+      }
+      
+      certificateChainObjects.append(certificate) // Aggiungi l'oggetto decodificato
     }
     
-    private static func verifyChain(certificates: [X509Certificate], trustAnchor: X509Certificate) -> Bool {
-        // Check if the certificates form a valid chain
-        // Each certificate (except the root) should be signed by the next certificate in the chain
-        
-        // Verify that the last certificate is the trust anchor
-        guard let lastCertSubject = certificates.last?.subjectDistinguishedName,
-              let trustAnchorSubject = trustAnchor.subjectDistinguishedName,
-              lastCertSubject == trustAnchorSubject else {
-            return false
-        }
-        
-        // Check each certificate in the chain
-        for i in 0..<certificates.count-1 {
-            let cert = certificates[i]
-            let issuerCert = certificates[i+1]
-            
-            // Check if the issuer of the current certificate matches the subject of the issuer certificate
-            guard let certIssuer = cert.issuerDistinguishedName,
-                  let issuerSubject = issuerCert.subjectDistinguishedName,
-                  certIssuer == issuerSubject else {
-                return false
-            }
-        }
-        
-        return true
+    if certificateChainObjects.isEmpty && !certChainBase64.isEmpty {
+      let errorMsg = "Certificate chain object array is empty after decoding loop, although input was not empty."
+      completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: nil))
+      return
+    }
+    guard let anchor = trustAnchorCert else {
+      let errorMsg = "Trust anchor certificate became nil unexpectedly after decoding."
+      completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
+      return
     }
     
-    private static func checkCertificateRevocation(certificates: [X509Certificate]) -> CertificateValidationResult? {
-        // For each certificate, check if it has been revoked using CRLs
+    // --- 2. Perform Trust Evaluation ---
+    evaluateTrust(certificateChain: certificateChainObjects, trustAnchor: anchor) { result in
+      completion(result)
+    }
+  }
+  
+  
+  // --- Trust Evaluation Helper ---
+  private func evaluateTrust(
+    certificateChain: [SecCertificate],
+    trustAnchor: SecCertificate,
+    completion: @escaping (ValidationResult) -> Void
+  ) {
+    var optionalTrust: SecTrust?
+    
+    // --- Define Policies ---
+    let basicX509Policy = SecPolicyCreateBasicX509()
+    let revocationPolicyFlags = kSecRevocationUseAnyAvailableMethod // Soft fail
+    // let revocationPolicyFlags = kSecRevocationUseAnyAvailableMethod | kSecRevocationRequirePositiveResponse // Hard fail
+    let revocationPolicy = SecPolicyCreateRevocation(revocationPolicyFlags)
+    
+    let policyRefs: [SecPolicy?] = [basicX509Policy, revocationPolicy]
+    let policies: [SecPolicy] = policyRefs.compactMap { $0 }
+    
+    let expectedPolicyCount = 2
+    if policies.count != expectedPolicyCount {
+      let errorMsg = "Failed to create required SecPolicy objects (Expected \(expectedPolicyCount), Created: \(policies.count))."
+      completion(ValidationResult(isValid: false, status: .validationError, errorMessage: errorMsg, failingCertificateInfo: nil))
+      return
+    }
+    
+    // --- Create SecTrust Object ---
+    let createStatus = SecTrustCreateWithCertificates(certificateChain as CFArray, policies as CFArray, &optionalTrust)
+    guard createStatus == errSecSuccess, let trust = optionalTrust else {
+      let errorMsg = "Failed to create SecTrust object. Status: \(createStatus)"
+      completion(ValidationResult(isValid: false, status: .validationError, errorMessage: errorMsg, failingCertificateInfo: nil))
+      return
+    }
+    
+    // --- Configure Trust Object ---
+    let anchorArray = [trustAnchor] as CFArray
+    let setAnchorStatus = SecTrustSetAnchorCertificates(trust, anchorArray)
+    guard setAnchorStatus == errSecSuccess else {
+      let errorMsg = "Failed to set custom anchor certificates. Status: \(setAnchorStatus)"
+      completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
+      return
+    }
+    let setAnchorOnlyStatus = SecTrustSetAnchorCertificatesOnly(trust, true)
+    guard setAnchorOnlyStatus == errSecSuccess else {
+      let anchorInfo = getCertificateInfo(trustAnchor)
+      let errorMsg = "Failed to restrict trust to custom anchors only. Status: \(setAnchorOnlyStatus)"
+      completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: anchorInfo))
+      return
+    }
+    
+    // --- Evaluate Trust Asynchronously ---
+    SecTrustEvaluateAsyncWithError(trust, DispatchQueue.global(qos: .userInitiated)) { secTrust, success, error in
+      let currentTrust = secTrust
+      
+      var evaluationResult: ValidationResult
+      if success {
+        var trustResultType: SecTrustResultType = .invalid
+        let getResultStatus = SecTrustGetTrustResult(currentTrust, &trustResultType)
         
-        for cert in certificates {
-          // Get CRL distribution points
-          if let crlUrl = extractCrlDistributionPoints(from: cert) {
-            do {
-                let crl = try downloadAndParseCRL(from: crlUrl)
-                
-                // Check if certificate is in the CRL
-                if isCertificateRevoked(cert, in: crl) {
-                    return CertificateValidationResult(
-                        isValid: false,
-                        validationStatus: .REVOKED,
-                        errorMessage: "Certificate revoked: \(cert.subjectDistinguishedName ?? "Unknown")"
-                    )
-                }
-            } catch {
-              return CertificateValidationResult(
-                  isValid: false,
-                  validationStatus: .CRL_RETRIEVAL_ERROR,
-                  errorMessage: "CRL Download error: \(error.localizedDescription)"
-              )
-            }
+        if getResultStatus == errSecSuccess && (trustResultType == .proceed || trustResultType == .unspecified) {
+          evaluationResult = ValidationResult(isValid: true, status: .valid, errorMessage: nil, failingCertificateInfo: nil)
+        } else {
+          evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, error: error)
+        }
+      } else {
+        // Evaluation failed directly ('success' is false, 'error' should be non-nil)
+        var trustResultType: SecTrustResultType = .fatalTrustFailure
+        SecTrustGetTrustResult(currentTrust, &trustResultType)
+        evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, error: error)
+      }
+      
+      DispatchQueue.main.async {
+        completion(evaluationResult)
+      }
+    }
+  }
+  
+  // --- Error Mapping Helper ---
+  private func mapErrorToValidationResult(trust: SecTrust, resultType: SecTrustResultType, error: Error?) -> ValidationResult {
+    var finalStatus: ValidationStatus = .invalidChainPath // Start with a generic failure
+    var finalMessage: String = "Certificate chain validation failed."
+    var contextCertInfo: [String: String]? = nil
+    
+    // --- Get Leaf Certificate Info for Context ---
+    var evaluatedChain: [SecCertificate]? = nil
+    if #available(iOS 15.0, macOS 12.0, tvOS 15.0, watchOS 8.0, *) {
+      if let chain = SecTrustCopyCertificateChain(trust) {
+        evaluatedChain = chain as? [SecCertificate]
+      }
+    } else {
+      let certificateCount = SecTrustGetCertificateCount(trust)
+      if certificateCount > 0 {
+        var chainTemp: [SecCertificate] = []
+        for i in 0..<certificateCount {
+          if let cert = SecTrustGetCertificateAtIndex(trust, i) {
+            chainTemp.append(cert)
           }
         }
-        return nil
+        if !chainTemp.isEmpty { evaluatedChain = chainTemp }
+      }
     }
+    if let chain = evaluatedChain, let leafCert = chain.first {
+      contextCertInfo = getCertificateInfo(leafCert)
+    }
+    // --- End Leaf Certificate Info ---
     
-    private static func extractCrlDistributionPoints(from cert: X509Certificate) -> String? {
-        // Use the built-in extension accessor to get CRL distribution points
-        if let crlExtension = cert.extensionObject(oid: OID.cRLDistributionPoints) as? X509Certificate.CRLDistributionPointsExtension,
-           let crls = crlExtension.crls,
-           !crls.isEmpty {
-            // Return only the first URL since that's all we need
-            return crls[0]
+    // --- Determine Status based on Error Code first ---
+    if let nsError = error as NSError? {
+      finalMessage = nsError.localizedDescription
+      if nsError.domain == NSOSStatusErrorDomain {
+        switch nsError.code {
+        case Int(errSecCertificateExpired):
+          finalStatus = .certificateExpired
+        case Int(errSecNotTrusted), Int(errSecTrustSettingDeny):
+          finalStatus = .invalidTrustAnchor
+        case Int(errSecItemNotFound):
+          finalStatus = .invalidChainPath
+        case Int(errSecCertificateRevoked):
+          finalStatus = .certificateRevoked
+          finalMessage = "Revocation check failed: \(nsError.localizedDescription)"
+        default:
+          if finalStatus == .invalidChainPath { finalStatus = .invalidChainPath }
+          finalMessage += " (Unhandled OSStatus Code: \(nsError.code))"
         }
-        
-        // Return an empty array if no CRL distribution points found
-        return nil
+      } else {
+        if finalStatus == .invalidChainPath { finalStatus = .validationError }
+        finalMessage += " (Domain: \(nsError.domain), Code: \(nsError.code))"
+      }
+    } else {
+      finalMessage = "Trust evaluation failed with result type \(resultType) but no specific error provided."
+      switch resultType {
+      case .proceed, .unspecified:
+        finalStatus = .validationError
+        finalMessage = "Inconsistent state: No error object, but mapping function called with result type \(resultType)."
+      case .deny, .fatalTrustFailure:
+        finalStatus = .invalidChainPath
+        finalMessage = "Trust evaluation denied or fatal error. Result type: \(resultType)."
+      case .recoverableTrustFailure:
+        finalStatus = .invalidChainPath
+        finalMessage = "Recoverable trust failure without specific error code. Check expiry/revocation policies. Result type: \(resultType)."
+      default:
+        finalStatus = .invalidChainPath
+        finalMessage = "Unknown trust result type without error: \(resultType)."
+      }
     }
-    
-    private static func downloadAndParseCRL(from urlString: String) throws -> Data {
-        // Download a fresh copy
-        guard let url = URL(string: urlString) else {
-            throw NSError(domain: "CRLError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid CRL URL"])
-        }
-        
-        let semaphore = DispatchSemaphore(value: 0)
-        var crlData: Data?
-        var downloadError: Error?
-        
-        let task = URLSession.shared.dataTask(with: url) { (data, response, error) in
-            if let error = error {
-                downloadError = error
-            } else if let data = data, let response = response as? HTTPURLResponse, response.statusCode == 200 {
-                crlData = data
-            } else {
-                downloadError = NSError(domain: "CRLError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to download CRL"])
-            }
-            
-            semaphore.signal()
-        }
-        
-        task.resume()
-        _ = semaphore.wait(timeout: .now() + 15) // 15 second timeout
-        
-        if let error = downloadError {
-            throw error
-        }
-        
-        guard let data = crlData else {
-            throw NSError(domain: "CRLError", code: 3, userInfo: [NSLocalizedDescriptionKey: "No CRL data received"])
-        }
-        
-        return data
-    }
-    
-    private static func isCertificateRevoked(_ cert: X509Certificate, in crlData: Data) -> Bool {
-        // Parse the CRL ASN.1 structure
-        do {
-            // Get certificate's serial number
-            guard let certSerialNumber = cert.serialNumber else {
-                return false
-            }
-            
-            // Parse the CRL using ASN1DERDecoder
-            let asn1Objects = try ASN1DERDecoder.decode(data: crlData)
-            if asn1Objects.isEmpty {
-                return false
-            }
-            
-            // CRL -> TBSCertList -> revokedCertificates
-            if let crlSequence = asn1Objects.first,
-               let tbsCertListBlock = crlSequence.sub(0) {
-                
-                // Revoked certificates are typically at index 5 in the CRL you provided
-                if let revokedCertsBlock = tbsCertListBlock.sub(5), revokedCertsBlock.subCount() > 0 {
-                    // Check each revoked certificate
-                    for i in 0..<revokedCertsBlock.subCount() {
-                        if let revokedCert = revokedCertsBlock.sub(i) {
-                            // The serial number is directly in the first position of each revoked cert entry
-                            if let serialNumberBlock = revokedCert.sub(0),
-                               let revokedSerialNumber = serialNumberBlock.value as? Data {
-                                // Compare serial numbers (both the direct comparison and hex string comparison)
-                                if revokedSerialNumber == certSerialNumber {
-                                    return true
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return false
-        } catch {
-            return false
-        }
-    }
+    return ValidationResult(isValid: false, status: finalStatus, errorMessage: finalMessage, failingCertificateInfo: contextCertInfo)
+  }
+  
+  // Helper to extract basic info from a certificate
+  private func getCertificateInfo(_ certificate: SecCertificate) -> [String: String] {
+    var info: [String: String] = [:]
+    info["subjectSummary"] = SecCertificateCopySubjectSummary(certificate) as String? ?? "Unknown"
+    return info
+  }
 }
