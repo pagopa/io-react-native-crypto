@@ -42,10 +42,13 @@ import java.util.Date
  *
  * @property connectTimeout Network connection timeout in milliseconds.
  * @property readTimeout Network read timeout in milliseconds.
+ * @property requireCrl If true, certificate validation will fail if CRLs cannot be checked
+ * (e.g., no CDP in chain, or CRL fetch/validation fails).
  */
 data class X509VerificationOptions(
   val connectTimeout: Int = 15000, // Default 15 seconds
-  val readTimeout: Int = 15000     // Default 15 seconds
+  val readTimeout: Int = 15000,    // Default 15 seconds
+  val requireCrl: Boolean = false  // Default to false (current behavior)
 )
 
 /**
@@ -72,6 +75,7 @@ object X509VerificationUtils {
     CRL_PARSE_FAILED,           // Failed to parse a downloaded CRL.
     CRL_EXPIRED,                // A required CRL has expired.
     CRL_SIGNATURE_INVALID,      // The signature on a CRL is invalid.
+    CRL_REQUIRED_BUT_MISSING_CDP, // CRLs are mandatory, but no CDP was found.
     VALIDATION_ERROR            // An unexpected error occurred during validation.
   }
 
@@ -111,8 +115,8 @@ object X509VerificationUtils {
 
     val certificateFactory: CertificateFactory
     val trustAnchorCert: X509Certificate
-    val certificateChain: List<X509Certificate>
     val trustAnchor: TrustAnchor
+    val certificateChain: List<X509Certificate>
 
     // --- 1. Decode Certificates and Trust Anchor ---
     try {
@@ -121,19 +125,34 @@ object X509VerificationUtils {
       trustAnchorCert = certificateFactory.generateCertificate(ByteArrayInputStream(trustAnchorBytes)) as X509Certificate
       trustAnchor = TrustAnchor(trustAnchorCert, null)
 
-      certificateChain = certChainBase64.map { certBase64 ->
+      val fullDecodedChain = certChainBase64.map { certBase64 ->
         val certBytes = Base64.decode(certBase64, Base64.DEFAULT)
         certificateFactory.generateCertificate(ByteArrayInputStream(certBytes)) as X509Certificate
       }
 
-      // Check if the last certificate in the chain was issued by the trust anchor
-      val lastCertInChain = certificateChain.lastOrNull()
-        ?: return ValidationResult(false, ValidationStatus.INVALID_CHAIN_PATH, "Certificate chain is effectively empty after decoding.")
-      // Allow the chain to end with the trust anchor itself OR a cert issued by the trust anchor.
-      if (!lastCertInChain.encoded.contentEquals(trustAnchorCert.encoded) &&
-        lastCertInChain.issuerX500Principal != trustAnchorCert.subjectX500Principal) {
-        return ValidationResult(false, ValidationStatus.INVALID_TRUST_ANCHOR, "Last certificate in chain not issued by trust anchor.")
+      if (fullDecodedChain.isEmpty()) {
+        return ValidationResult(false, ValidationStatus.INVALID_CHAIN_PATH, "Input certificate chain is empty.")
       }
+
+      var effectiveChainEndIndex = -1
+      // Find the first certificate in the chain that is either the trust anchor
+      // or is issued by the trust anchor.
+      for (i in fullDecodedChain.indices) {
+        val currentCert = fullDecodedChain[i]
+        if (currentCert.encoded.contentEquals(trustAnchorCert.encoded) ||
+          currentCert.issuerX500Principal == trustAnchorCert.subjectX500Principal) {
+          effectiveChainEndIndex = i
+          break // Found the effective end of the chain with respect to the trust anchor
+        }
+      }
+
+      if (effectiveChainEndIndex == -1) {
+        // No certificate in the provided chain is the trust anchor itself or is issued by it.
+        return ValidationResult(false, ValidationStatus.INVALID_TRUST_ANCHOR, "Provided certificate chain does not connect to the trust anchor.")
+      }
+
+      // Use the chain up to the identified connecting certificate for PKIX validation
+      certificateChain = fullDecodedChain.subList(0, effectiveChainEndIndex + 1)
 
     } catch (e: Exception) {
       val (status, message) = when(e) {
@@ -156,25 +175,40 @@ object X509VerificationUtils {
       }
     }
 
-    // --- 3. Determine if Revocation Check is Needed and Fetch CRLs ---
+    // --- 3. Determine if Revocation Check is Needed and Fetch/Validate CRLs ---
     val anyCertHasCdp = certificateChain.any { hasCrlDistributionPoint(it) }
     var crls: List<X509CRL> = emptyList()
+    // This flag determines if PKIXParameters.isRevocationEnabled is set to true.
+    // It will be true if CDPs are present, or if CRLs are mandatory (implying CDPs must be present).
     val performRevocationCheck: Boolean
 
     if (anyCertHasCdp) {
       try {
         crls = fetchCrlsForChain(certificateFactory, certificateChain, trustAnchorCert, options)
-        // Proceed with revocation check enabled, even if CRL fetch yielded no usable CRLs.
         performRevocationCheck = true
+
+        // If CRLs are mandatory, we must have successfully fetched at least one.
+        if (options.requireCrl && crls.isEmpty()) {
+          return ValidationResult(false, ValidationStatus.CRL_FETCH_FAILED, "Mandatory CRL check: No valid CRLs could be obtained despite presence of CRL Distribution Points.")
+        }
       } catch (e: CrlFetchException) {
-        // If fetchCrlsForChain itself throws (e.g., final error after trying all URLs), fail validation
-        return ValidationResult(false, e.status, e.message)
+        // This explicit catch handles failures from CRL fetching logic.
+        // If CRLs are mandatory OR if they are not but fetching still failed, it's an error.
+        val messagePrefix = if (options.requireCrl) "Mandatory CRL check failed: " else "CRL fetch failed: "
+        return ValidationResult(false, e.status, "$messagePrefix${e.message} (Reported Status: ${e.status})")
       } catch (e: Exception) {
-        // Map generic fetch error to CRL_FETCH_FAILED
-        return ValidationResult(false, ValidationStatus.CRL_FETCH_FAILED, "Unexpected error fetching CRLs: ${e.message}")
+        // Catch other unexpected exceptions during CRL fetching.
+        val messagePrefix = if (options.requireCrl) "Mandatory CRL check failed: " else "CRL fetch failed: "
+        return ValidationResult(false, ValidationStatus.CRL_FETCH_FAILED, "${messagePrefix}Unexpected error fetching CRLs: ${e.message}")
       }
-    } else {
-      performRevocationCheck = false
+    } else { // No CDPs found in the certificate chain
+      if (options.requireCrl) {
+        // CRLs are mandatory, but no CDPs were found to fetch them from. This is a failure.
+        return ValidationResult(false, ValidationStatus.CRL_REQUIRED_BUT_MISSING_CDP, "CRL check is mandatory, but no CRL Distribution Point found in the certificate chain.")
+      } else {
+        // No CDPs and CRLs are not mandatory. No CRL-based revocation check will be performed by our fetcher.
+        performRevocationCheck = false
+      }
     }
 
     // --- 4. Perform PKIX Path Validation ---

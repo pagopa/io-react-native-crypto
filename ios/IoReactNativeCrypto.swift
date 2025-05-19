@@ -7,7 +7,7 @@ class IoReactNativeCrypto: NSObject {
   func verifyCertificateChain(
     certChainBase64: NSArray,
     trustAnchorBase64: String,
-    optionsDict: NSDictionary,
+    options: NSDictionary,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
@@ -20,11 +20,14 @@ class IoReactNativeCrypto: NSObject {
         return
       }
       
-      let connectTimeoutOpt = optionsDict["connectTimeout"] as? Int ?? 15000
-      let readTimeoutOpt = optionsDict["readTimeout"] as? Int ?? 15000
+      let connectTimeoutOpt = options["connectTimeout"] as? Int ?? 15000
+      let readTimeoutOpt = options["readTimeout"] as? Int ?? 15000
+      let requireCrlOpt = options["requireCrl"] as? Bool ?? false
+      
       let verificationOptions = X509VerificationOptions(
         connectTimeout: connectTimeoutOpt,
-        readTimeout: readTimeoutOpt
+        readTimeout: readTimeoutOpt,
+        requireCrl: requireCrlOpt
       )
       
       X509VerificationUtils.shared.verifyCertificateChain(

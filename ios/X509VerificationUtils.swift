@@ -1,6 +1,7 @@
 import Foundation
 import Security
 
+private let osstatus_errSecRevocationNoVerify: Int32 = -67611
 
 enum ValidationStatus: String, CaseIterable {
   case valid = "VALID"
@@ -11,6 +12,7 @@ enum ValidationStatus: String, CaseIterable {
   // NOTE: Covers various revocation issues: confirmed revoked, fetch fail, parse fail etc.
   case certificateRevoked = "CERTIFICATE_REVOKED" // Includes inability to check if kSecRevocationRequirePositiveResponse is used
   case validationError = "VALIDATION_ERROR" // General error during the validation process setup or unexpected issue
+  case chainTooLong = "CHAIN_TOO_LONG"
 }
 
 struct ValidationResult {
@@ -43,6 +45,7 @@ struct X509VerificationOptions {
   // Note: Timeouts are informational only in Swift SecTrust context
   let connectTimeout: Int
   let readTimeout: Int
+  let requireCrl: Bool
 }
 
 class X509VerificationUtils {
@@ -59,10 +62,9 @@ class X509VerificationUtils {
   ) {
 
     // --- 1. Decode Certificates and Trust Anchor ---
-    var certificateChainObjects: [SecCertificate] = []
-    var trustAnchorCert: SecCertificate?
+    var decodedChainObjectsFromInput: [SecCertificate] = []
+    let trustAnchorSecCert: SecCertificate
 
-    // Decode Trust Anchor
     guard let taData = Data(base64Encoded: trustAnchorCertBase64, options: .ignoreUnknownCharacters) else {
       let errorMsg = "Failed Data(base64Encoded:) for trust anchor."
       completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
@@ -73,39 +75,74 @@ class X509VerificationUtils {
       completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
       return
     }
-    trustAnchorCert = taCert
+    trustAnchorSecCert = taCert
 
-    // Decode Certificate Chain with separated checks
     for (index, certBase64) in certChainBase64.enumerated() {
-
       guard let certData = Data(base64Encoded: certBase64, options: .ignoreUnknownCharacters) else {
-        let errorMsg = "Failed Data(base64Encoded:) for certificate at index \(index)."
-        completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: ["index": String(index)]))
+        let errorMsg = "Failed Data(base64Encoded:) for certificate at input index \(index)."
+        completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: ["input_index": String(index)]))
         return
       }
-
       guard let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
-        let errorMsg = "Failed SecCertificateCreateWithData for certificate at index \(index). Decoded data might not be valid DER."
-        completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: ["index": String(index)]))
+        let errorMsg = "Failed SecCertificateCreateWithData for certificate at input index \(index). Decoded data might not be valid DER."
+        completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: ["input_index": String(index)]))
         return
       }
-
-      certificateChainObjects.append(certificate)
+      decodedChainObjectsFromInput.append(certificate)
     }
 
-    if certificateChainObjects.isEmpty && !certChainBase64.isEmpty {
+    if decodedChainObjectsFromInput.isEmpty && !certChainBase64.isEmpty {
       let errorMsg = "Certificate chain object array is empty after decoding loop, although input was not empty."
       completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: nil))
       return
     }
-    guard let anchor = trustAnchorCert else {
-      let errorMsg = "Trust anchor certificate became nil unexpectedly after decoding."
-      completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
-      return
+
+    // --- 1.5 Pre-check for Chain Lengthening and Connection to Trust Anchor ---
+    var effectiveChainForSecTrust: [SecCertificate] = []
+    var foundConnectionToAnchor = false
+
+    // We need the trust anchor's subject name to check if other certs are issued by it.
+    guard let anchorSubjectName = SecCertificateCopyNormalizedSubjectSequence(trustAnchorSecCert) else {
+        let errorMsg = "Could not get subject name for trust anchor for chain connection check."
+        completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: getCertificateInfo(trustAnchorSecCert)))
+        return
+    }
+
+    for (index, currentCertInInputChain) in decodedChainObjectsFromInput.enumerated() {
+        if foundConnectionToAnchor {
+            // If we have already found the connection point, any subsequent certificate
+            // in the input chain is considered extraneous (lengthening).
+          let errorMsg = "Certificate chain is longer than necessary. Extraneous certificate found at input index \(index)."
+          completion(ValidationResult(isValid: false, status: .chainTooLong, errorMessage: errorMsg, failingCertificateInfo: getCertificateInfo(currentCertInInputChain)))
+            return
+        }
+
+        // Check if the current certificate from the input chain IS the trust anchor.
+        if currentCertInInputChain == trustAnchorSecCert {
+            foundConnectionToAnchor = true
+        } else {
+            // It's not the anchor, so add it to the chain we're building for SecTrust.
+            effectiveChainForSecTrust.append(currentCertInInputChain)
+
+            // Check if this non-anchor certificate is issued by the trust anchor.
+            if let currentCertIssuerName = SecCertificateCopyNormalizedIssuerSequence(currentCertInInputChain),
+               currentCertIssuerName == anchorSubjectName {
+                foundConnectionToAnchor = true
+            }
+        }
+    }
+
+    // After the loop, if no connection was found, it's an error.
+    if !foundConnectionToAnchor {
+        let errorMsg = "Provided certificate chain does not connect to the trust anchor (neither issued by it nor is the anchor itself found appropriately)."
+
+      let contextCert = decodedChainObjectsFromInput.last ?? trustAnchorSecCert
+        completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: getCertificateInfo(contextCert)))
+        return
     }
 
     // --- 2. Perform Trust Evaluation ---
-    evaluateTrust(certificateChain: certificateChainObjects, trustAnchor: anchor) { result in
+    evaluateTrust(certificateChain: effectiveChainForSecTrust, trustAnchor: trustAnchorSecCert, options: options) { result in
       completion(result)
     }
   }
@@ -115,14 +152,17 @@ class X509VerificationUtils {
   private func evaluateTrust(
     certificateChain: [SecCertificate],
     trustAnchor: SecCertificate,
+    options: X509VerificationOptions,
     completion: @escaping (ValidationResult) -> Void
   ) {
     var optionalTrust: SecTrust?
 
     // --- Define Policies ---
     let basicX509Policy = SecPolicyCreateBasicX509()
-    let revocationPolicyFlags = kSecRevocationUseAnyAvailableMethod // Soft fail
-    // let revocationPolicyFlags = kSecRevocationUseAnyAvailableMethod | kSecRevocationRequirePositiveResponse // Hard fail
+    var revocationPolicyFlags = CFOptionFlags(kSecRevocationUseAnyAvailableMethod) // Default
+    if options.requireCrl {
+        revocationPolicyFlags |= CFOptionFlags(kSecRevocationRequirePositiveResponse)
+    }
     let revocationPolicy = SecPolicyCreateRevocation(revocationPolicyFlags)
 
     let policyRefs: [SecPolicy?] = [basicX509Policy, revocationPolicy]
@@ -171,13 +211,13 @@ class X509VerificationUtils {
         if getResultStatus == errSecSuccess && (trustResultType == .proceed || trustResultType == .unspecified) {
           evaluationResult = ValidationResult(isValid: true, status: .valid, errorMessage: nil, failingCertificateInfo: nil)
         } else {
-          evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, error: error)
+          evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, options:options, error: error)
         }
       } else {
         // Evaluation failed directly ('success' is false, 'error' should be non-nil)
         var trustResultType: SecTrustResultType = .fatalTrustFailure
         SecTrustGetTrustResult(currentTrust, &trustResultType)
-        evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, error: error)
+        evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, options:options, error: error)
       }
 
       DispatchQueue.main.async {
@@ -187,7 +227,7 @@ class X509VerificationUtils {
   }
 
   // --- Error Mapping Helper ---
-  private func mapErrorToValidationResult(trust: SecTrust, resultType: SecTrustResultType, error: Error?) -> ValidationResult {
+  private func mapErrorToValidationResult(trust: SecTrust, resultType: SecTrustResultType, options: X509VerificationOptions, error: Error?) -> ValidationResult {
     var finalStatus: ValidationStatus = .invalidChainPath // Start with a generic failure
     var finalMessage: String = "Certificate chain validation failed."
     var contextCertInfo: [String: String]? = nil
@@ -230,8 +270,12 @@ class X509VerificationUtils {
           finalStatus = .certificateRevoked
           finalMessage = "Revocation check failed: \(nsError.localizedDescription)"
         default:
-          if finalStatus == .invalidChainPath { finalStatus = .invalidChainPath }
-          finalMessage += " (Unhandled OSStatus Code: \(nsError.code))"
+          if options.requireCrl && (resultType == .deny || resultType == .fatalTrustFailure || resultType == .recoverableTrustFailure) {
+              finalStatus = .certificateRevoked
+              finalMessage += " (Trust evaluation failed; CRLs were mandatory, and revocation check failed.)"
+          } else {
+              finalStatus = .invalidChainPath // Default for other unhandled OSStatus codes
+          }
         }
       } else {
         if finalStatus == .invalidChainPath { finalStatus = .validationError }
@@ -247,8 +291,13 @@ class X509VerificationUtils {
         finalStatus = .invalidChainPath
         finalMessage = "Trust evaluation denied or fatal error. Result type: \(resultType)."
       case .recoverableTrustFailure:
-        finalStatus = .invalidChainPath
-        finalMessage = "Recoverable trust failure without specific error code. Check expiry/revocation policies. Result type: \(resultType)."
+          // This can be due to various reasons (e.g., expired but not yet fatal, or a soft revocation failure if not strict).
+          finalStatus = options.requireCrl ? .certificateRevoked : .invalidChainPath
+          if options.requireCrl && finalStatus == .certificateRevoked {
+              finalMessage = "Recoverable trust failure (result: \(resultType)); CRLs were mandatory, assumed revocation issue."
+          } else {
+              finalMessage = "Recoverable trust failure (result: \(resultType))."
+          }
       default:
         finalStatus = .invalidChainPath
         finalMessage = "Unknown trust result type without error: \(resultType)."

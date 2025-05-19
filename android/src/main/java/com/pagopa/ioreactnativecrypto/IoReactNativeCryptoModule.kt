@@ -493,14 +493,20 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
         // 2. Parse options with defaults
         // Use default values from X509VerificationOptions if keys are missing
+        // Parse options with defaults
+        val defaultOptions = X509VerificationOptions() // Get defaults from the data class
+
         val connectTimeout = options.takeIf { it.hasKey("connectTimeout") }?.getInt("connectTimeout")
-          ?: X509VerificationOptions().connectTimeout // Default from data class
+          ?: defaultOptions.connectTimeout
         val readTimeout = options.takeIf { it.hasKey("readTimeout") }?.getInt("readTimeout")
-          ?: X509VerificationOptions().readTimeout // Default from data class
+          ?: defaultOptions.readTimeout
+        val requireCrl = options.takeIf { it.hasKey("requireCrl") }?.getBoolean("requireCrl")
+          ?: defaultOptions.requireCrl
 
         val verificationOptions = X509VerificationOptions(
           connectTimeout = connectTimeout,
-          readTimeout = readTimeout
+          readTimeout = readTimeout,
+          requireCrl = requireCrl
         )
 
         // 3. Call the utility function

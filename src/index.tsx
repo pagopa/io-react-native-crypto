@@ -78,11 +78,14 @@ export type PublicKey = ECKey | RSAKey;
  */
 export enum CertificateValidationStatus {
   VALID = 'VALID',
-  INVALID_CHAIN = 'INVALID_CHAIN',
+  INVALID_CHAIN = 'INVALID_CHAIN', // This might need more granularity
   EXPIRED = 'EXPIRED',
   NOT_YET_VALID = 'NOT_YET_VALID',
   REVOKED = 'REVOKED',
-  VALIDATION_ERROR = 'VALIDATION_ERROR'
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  CHAIN_TOO_LONG = 'CHAIN_TOO_LONG',
+  CRL_REQUIRED_BUT_MISSING_CDP = 'CRL_REQUIRED_BUT_MISSING_CDP',
+  INVALID_TRUST_ANCHOR = 'INVALID_TRUST_ANCHOR'
 }
 
 /**
@@ -91,6 +94,7 @@ export enum CertificateValidationStatus {
 export interface X509CertificateOptions {
   connectTimeout: number;
   readTimeout: number;
+  requireCrl: boolean;
 }
 
 /**

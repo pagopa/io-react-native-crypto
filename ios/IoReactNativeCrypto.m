@@ -24,7 +24,7 @@ RCT_EXTERN_METHOD(signUTF8Text:(NSString*)text withKeyTag:(NSString*)keyTag
 
 RCT_EXTERN_METHOD(verifyCertificateChain:(NSArray *)certChainBase64
                   withTrustAnchorBase64:(NSString *)trustAnchorBase64
-                  withOptions:(NSDictionary *)optionsDict
+                  withOptions:(NSDictionary *)options
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
