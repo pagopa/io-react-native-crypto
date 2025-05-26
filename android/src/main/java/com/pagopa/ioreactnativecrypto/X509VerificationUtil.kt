@@ -36,19 +36,22 @@ import java.security.cert.X509CRL
 import java.security.cert.X509CertSelector
 import java.security.cert.X509Certificate
 import java.util.Date
+import java.util.concurrent.ConcurrentHashMap // Imported for the cache
 
 /**
  * Configuration options for X.509 certificate verification.
  *
  * @property connectTimeout Network connection timeout in milliseconds.
  * @property readTimeout Network read timeout in milliseconds.
- * @property requireCrl If true, certificate validation will fail if CRLs cannot be checked
- * (e.g., no CDP in chain, or CRL fetch/validation fails).
+ * @property requireCrl If true, certificate validation will fail if CRLs cannot be checked.
+ * @property crlCacheDurationMillis Duration in milliseconds for which a CRL is cached.
+ * A value of 0 or less disables CRL caching.
  */
 data class X509VerificationOptions(
   val connectTimeout: Int = 15000, // Default 15 seconds
   val readTimeout: Int = 15000,    // Default 15 seconds
-  val requireCrl: Boolean = false  // Default to false (current behavior)
+  val requireCrl: Boolean = false,  // Default to false
+  val crlCacheDurationMillis: Long = 0L // Default: caching disabled
 )
 
 /**
@@ -60,6 +63,15 @@ object X509VerificationUtils {
 
   private const val TAG = "X509Verification"
   private const val CERT_TYPE = "X.509"
+
+  /** Data class for storing CRLs in cache along with their cache expiry timestamp. */
+  private data class CachedCrl(
+    val crl: X509CRL,
+    val cacheExpiryTimeMillis: Long
+  )
+
+  /** In-memory cache for CRLs. Key is the CRL URL. */
+  private val crlCache = ConcurrentHashMap<String, CachedCrl>()
 
   /**
    * Represents the status of the certificate chain verification process.
@@ -96,12 +108,12 @@ object X509VerificationUtils {
 
   /**
    * Verifies a certificate chain against a trust anchor.
-   * Revocation checks using CRLs are performed *only if* CRL Distribution Points (CDPs)
-   * are specified in the certificates within the chain.
+   * Revocation checks using CRLs are performed if CRL Distribution Points (CDPs)
+   * are specified in the certificates within the chain and caching is utilized based on options.
    *
    * @param certChainBase64 List of Base64 encoded certificates, starting with the end-entity cert and ending with the CA cert.
    * @param trustAnchorCertBase64 Base64 encoded trust anchor (CA) certificate.
-   * @param options Configuration for network timeouts.
+   * @param options Configuration for network timeouts and CRL caching.
    * @return A [ValidationResult] indicating the outcome.
    */
   suspend fun verifyCertificateChain(
@@ -300,6 +312,7 @@ object X509VerificationUtils {
    * Fetches CRLs specified in the CRL Distribution Points extension of certificates in the chain.
    * It tries multiple URLs if available and validates the CRL's validity period and signature.
    * This is only called if at least one certificate in the chain has a CDP.
+   * Uses caching if configured.
    */
   private suspend fun fetchCrlsForChain(
     factory: CertificateFactory,
@@ -315,18 +328,43 @@ object X509VerificationUtils {
     if (uniqueCrlUrls.isEmpty()) {
       return emptyList()
     }
-
     val validCrls = mutableListOf<X509CRL>()
     var lastException: CrlFetchException? = null // Track the last significant error
+    val currentTimeMillis = System.currentTimeMillis()
 
     for (url in uniqueCrlUrls) {
       try {
+        // --- Cache Check ---
+        if (options.crlCacheDurationMillis > 0) {
+          val cachedEntry = crlCache[url]
+          if (cachedEntry != null &&
+            currentTimeMillis < cachedEntry.cacheExpiryTimeMillis && // Check configured cache expiry
+            (cachedEntry.crl.nextUpdate == null || currentTimeMillis < cachedEntry.crl.nextUpdate.time)) { // Check CRL's own validity
+
+            Log.d(TAG, "Using cached CRL for $url. Cache Expiry: ${Date(cachedEntry.cacheExpiryTimeMillis)}, CRL NextUpdate: ${cachedEntry.crl.nextUpdate}")
+            // It's good practice to re-verify the signature of a cached CRL if issuers could change,
+            // but for now, we add it directly, assuming PKIX validation will handle further checks
+            // or that the CRL was validated before caching.
+            // For more robustness, one might re-verify the signature here:
+            // crl.verify(findIssuerCertificate(crl.issuerX500Principal, chain, trustAnchorCert)?.publicKey)
+            validCrls.add(cachedEntry.crl)
+            continue // Move to the next URL
+          } else if (cachedEntry != null) {
+            Log.d(TAG, "Cached CRL for $url is stale. Cache Expiry: ${Date(cachedEntry.cacheExpiryTimeMillis)}, CRL NextUpdate: ${cachedEntry.crl.nextUpdate}. Fetching new one.")
+            crlCache.remove(url) // Remove stale entry
+          } else {
+            Log.d(TAG, "No cached CRL for $url.")
+          }
+        }
+
+        // --- Download and Validate CRL (Cache miss or stale) ---
+        Log.d(TAG, "Fetching CRL from $url")
         val crlBytes = downloadCrlWithTimeout(url, options)
         val crl = factory.generateCRL(ByteArrayInputStream(crlBytes)) as X509CRL
 
         // --- CRL Validation ---
         // 1. Check expiry
-        if (crl.nextUpdate != null && Date().after(crl.nextUpdate)) {
+        if (crl.nextUpdate != null && Date(currentTimeMillis).after(crl.nextUpdate)) {
           throw CrlFetchException(ValidationStatus.CRL_EXPIRED, "CRL from $url is expired (Next Update: ${crl.nextUpdate}).")
         }
 
@@ -343,25 +381,38 @@ object X509VerificationUtils {
         // Add successfully validated CRL
         validCrls.add(crl)
 
+        // --- Cache Store ---
+        if (options.crlCacheDurationMillis > 0) {
+          val cacheEntryExpiry = currentTimeMillis + options.crlCacheDurationMillis
+          crlCache[url] = CachedCrl(crl, cacheEntryExpiry)
+          Log.d(TAG, "Cached CRL for $url. Expires at: ${Date(cacheEntryExpiry)}")
+        }
+
       } catch (e: CrlFetchException) {
-        lastException = e // Record the error
+        lastException = e
+        Log.w(TAG, "CRL fetch/validation failed for $url: ${e.message}", if(e.cause != e) e.cause else null)
       } catch (e: TimeoutCancellationException) {
         lastException = CrlFetchException(ValidationStatus.CRL_FETCH_FAILED, "Timeout downloading CRL from $url", e)
+        Log.w(TAG, "Timeout downloading CRL from $url", e)
       } catch (e: IOException) { // Network or connection errors
         lastException = CrlFetchException(ValidationStatus.CRL_FETCH_FAILED, "Network error for CRL $url: ${e.message}", e)
+        Log.w(TAG, "Network error for CRL $url", e)
       } catch (e: CRLException) { // Parsing errors
         lastException = CrlFetchException(ValidationStatus.CRL_PARSE_FAILED, "Error parsing CRL from $url: ${e.message}", e)
+        Log.w(TAG, "Error parsing CRL from $url", e)
       } catch (e: Exception) { // Other unexpected errors
         lastException = CrlFetchException(ValidationStatus.CRL_FETCH_FAILED, "Unexpected error for CRL $url: ${e.message}", e)
+        Log.e(TAG, "Unexpected error processing CRL $url", e)
       }
     }
 
     // If we attempted to fetch CRLs (because CDPs existed) but ended up with none,
     // and there was at least one error during the process, throw the last error.
     if (validCrls.isEmpty() && lastException != null) {
+      Log.w(TAG, "No valid CRLs fetched and an error occurred: ${lastException.message}")
       throw lastException
     }
-
+    Log.d(TAG, "Valid CRLs fetched: ${validCrls.size}")
     return validCrls
   }
 
@@ -376,9 +427,10 @@ object X509VerificationUtils {
   /** Downloads CRL bytes from a URL with specified timeouts. */
   private suspend fun downloadCrlWithTimeout(url: String, options: X509VerificationOptions): ByteArray {
     return withContext(Dispatchers.IO) {
-      withTimeout(options.connectTimeout + options.readTimeout.toLong()) {
+      withTimeout(options.connectTimeout.toLong() + options.readTimeout.toLong() + 1000) { // Add a small buffer
         var connection: HttpURLConnection? = null
         try {
+          Log.d(TAG, "Attempting CRL download from: $url with connectTimeout=${options.connectTimeout}, readTimeout=${options.readTimeout}")
           connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = options.connectTimeout
             readTimeout = options.readTimeout
@@ -394,7 +446,7 @@ object X509VerificationUtils {
           } else {
             // Read error stream for details, ensure it's closed
             val errorDetails = connection.errorStream?.use { it.readBytes() }?.toString(Charsets.UTF_8) ?: "No error details"
-            throw IOException("CRL download failed: HTTP $responseCode for URL $url. $errorDetails")
+            throw IOException("CRL download failed: HTTP $responseCode for URL $url. Details: $errorDetails")
           }
         } finally {
           connection?.disconnect()
@@ -424,7 +476,7 @@ object X509VerificationUtils {
       val oid = Extension.cRLDistributionPoints.id // OID for CRL Distribution Points
       val extensionValue = cert.getExtensionValue(oid) ?: return emptyList() // Return empty if extension not present
 
-      // The extension value is SEQUENCE (CRLDistPoints) wrapped in an OCTET STRING.
+      // The extension value is a SEQUENCE (CRLDistPoints) wrapped in an OCTET STRING.
       // 1. Parse the outer OCTET STRING
       val derOctetString = ASN1Primitive.fromByteArray(extensionValue) as? DEROctetString
         ?: return emptyList()

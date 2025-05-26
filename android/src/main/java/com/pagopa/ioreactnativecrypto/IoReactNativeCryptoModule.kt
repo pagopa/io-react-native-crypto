@@ -12,13 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.io.ByteArrayInputStream
 import java.security.*
-import java.security.cert.CertPathValidator
-import java.security.cert.CertificateFactory
-import java.security.cert.PKIXParameters
-import java.security.cert.TrustAnchor
-import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
@@ -492,9 +486,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         }
 
         // 2. Parse options with defaults
-        // Use default values from X509VerificationOptions if keys are missing
-        // Parse options with defaults
-        val defaultOptions = X509VerificationOptions() // Get defaults from the data class
+        val defaultOptions = X509VerificationOptions()
 
         val connectTimeout = options.takeIf { it.hasKey("connectTimeout") }?.getInt("connectTimeout")
           ?: defaultOptions.connectTimeout
@@ -502,11 +494,14 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
           ?: defaultOptions.readTimeout
         val requireCrl = options.takeIf { it.hasKey("requireCrl") }?.getBoolean("requireCrl")
           ?: defaultOptions.requireCrl
+        val crlCacheDurationMillis = options.takeIf { it.hasKey("crlCacheDurationMillis") }?.getDouble("crlCacheDurationMillis")?.toLong()
+          ?: defaultOptions.crlCacheDurationMillis
 
         val verificationOptions = X509VerificationOptions(
           connectTimeout = connectTimeout,
           readTimeout = readTimeout,
-          requireCrl = requireCrl
+          requireCrl = requireCrl,
+          crlCacheDurationMillis = crlCacheDurationMillis
         )
 
         // 3. Call the utility function
