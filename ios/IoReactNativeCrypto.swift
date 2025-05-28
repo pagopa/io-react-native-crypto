@@ -2,6 +2,46 @@
 class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
   private let keyConfig: KeyConfig = .ec
+
+  @objc(verifyCertificateChain:withTrustAnchorBase64:withOptions:withResolver:withRejecter:)
+  func verifyCertificateChain(
+    certChainBase64: NSArray,
+    trustAnchorBase64: String,
+    options: NSDictionary,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      guard let certChain = certChainBase64 as? [String] else {
+        DispatchQueue.main.async {
+          let errorInfo = ["message": "Invalid certificate chain format passed from React Native."]
+          reject("E_INVALID_ARGS", "Invalid certificate chain format", NSError(domain: "X509VerificationUtils", code: 1001, userInfo: errorInfo))
+        }
+        return
+      }
+      
+      let connectTimeoutOpt = options["connectTimeout"] as? Int ?? 15000
+      let readTimeoutOpt = options["readTimeout"] as? Int ?? 15000
+      let requireCrlOpt = options["requireCrl"] as? Bool ?? false
+      
+      let verificationOptions = X509VerificationOptions(
+        connectTimeout: connectTimeoutOpt,
+        readTimeout: readTimeoutOpt,
+        requireCrl: requireCrlOpt
+      )
+      
+      X509VerificationUtils.shared.verifyCertificateChain(
+        certChainBase64: certChain,
+        trustAnchorCertBase64: trustAnchorBase64,
+        options: verificationOptions
+      ) { validationResult in
+        let resultDict = validationResult.toDictionary()
+        DispatchQueue.main.async {
+          resolve(resultDict)
+        }
+      }
+    }
+  }
   
   @objc(generate:withResolver:withRejecter:)
   func generate(
@@ -284,6 +324,7 @@ class IoReactNativeCrypto: NSObject {
     case invalidUTF8Encoding = "INVALID_UTF8_ENCODING"
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
+    case certificatesValidationError = "CERTIFICATE_CHAIN_VALIDATION_ERROR"
     
     func error(userInfo: [String : Any]? = nil) -> NSError {
       switch self {
@@ -304,6 +345,8 @@ class IoReactNativeCrypto: NSObject {
       case .unableToSign:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .threadingError:
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+      case .certificatesValidationError:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       }
     }

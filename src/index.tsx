@@ -12,6 +12,7 @@ type CryptoErrorCodesIOS =
   | 'KEYCHAIN_LOAD_FAILED'
   | 'INVALID_UTF8_ENCODING'
   | 'UNABLE_TO_SIGN'
+  | 'CERTIFICATE_CHAIN_VALIDATION_ERROR'
   | 'THREADING_ERROR';
 
 /**
@@ -28,6 +29,7 @@ type CryptoErrorCodesAndroid =
   | 'UNABLE_TO_SIGN'
   | 'INVALID_UTF8_ENCODING'
   | 'INVALID_SIGN_ALGORITHM'
+  | 'CERTIFICATE_CHAIN_VALIDATION_ERROR'
   | 'UNKNOWN_EXCEPTION';
 
 /**
@@ -70,6 +72,42 @@ export type RSAKey = {
  * The Public Key type. It could be either an ECKey or an RSAKey.
  */
 export type PublicKey = ECKey | RSAKey;
+
+/**
+ * Represents the status of certificate validation
+ */
+export enum CertificateValidationStatus {
+  VALID = 'VALID',
+  INVALID_CHAIN = 'INVALID_CHAIN', // This might need more granularity
+  EXPIRED = 'EXPIRED',
+  NOT_YET_VALID = 'NOT_YET_VALID',
+  REVOKED = 'REVOKED',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  CHAIN_TOO_LONG = 'CHAIN_TOO_LONG',
+  CRL_REQUIRED_BUT_MISSING_CDP = 'CRL_REQUIRED_BUT_MISSING_CDP',
+  INVALID_TRUST_ANCHOR = 'INVALID_TRUST_ANCHOR'
+}
+
+/**
+ * Options for X.509 certificate validation
+ */
+export interface X509CertificateOptions {
+  connectTimeout: number;
+  readTimeout: number;
+  requireCrl: boolean;
+}
+
+/**
+ * Represents the result of certificate validation
+ */
+export interface CertificateValidationResult {
+  /** Whether the certificate chain is valid */
+  isValid: boolean;
+  /** The specific validation status */
+  validationStatus: CertificateValidationStatus;
+  /** Error message in case validation failed */
+  errorMessage: string;
+}
 
 const LINKING_ERROR =
   `The package '@pagopa/io-react-native-crypto' doesn't seem to be linked. Make sure: \n\n` +
@@ -148,7 +186,7 @@ export function deleteKey(keyTag: string): Promise<void> {
  * If it is not possible to sign, the promise is rejected providing an
  * instance of {@link CryptoError}.
  *
- * @param messge - the string message to sign.
+ * @param message - the string message to sign.
  * @param keyTag - the string key tag used to reference the key in the key store.
  * @returns a promise that resolves to the Base64 string representation of the signature.
  */
@@ -167,4 +205,24 @@ export function sign(message: string, keyTag: string): Promise<string> {
  */
 export function isKeyStrongboxBacked(keyTag: string): Promise<boolean> {
   return IoReactNativeCrypto.isKeyStrongboxBacked(keyTag);
+}
+
+/**
+ * Verifies a certificate chain against a trust anchor.
+ *
+ * @param certChainBase64 - Array of X.509 certificates in Base64 format, ordered from end-entity to issuer
+ * @param trustAnchorBase64 - Trust anchor certificate in Base64 format
+ * @param options - Options for certificate validation, including timeouts
+ * @returns Promise resolving to validation result with detailed status
+ */
+export function verifyCertificateChain(
+  certChainBase64: string[],
+  trustAnchorBase64: string,
+  options: X509CertificateOptions
+): Promise<CertificateValidationResult> {
+  return IoReactNativeCrypto.verifyCertificateChain(
+    certChainBase64,
+    trustAnchorBase64,
+    options
+  );
 }

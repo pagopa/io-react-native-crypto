@@ -7,7 +7,18 @@ import android.security.keystore.KeyProperties.*
 import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import java.io.ByteArrayInputStream
 import java.security.*
+import java.security.cert.CertPathValidator
+import java.security.cert.CertificateFactory
+import java.security.cert.PKIXParameters
+import java.security.cert.TrustAnchor
+import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
@@ -16,6 +27,11 @@ import java.security.spec.RSAKeyGenParameterSpec
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
+
+  // Create a CoroutineScope tied to the IO dispatcher for background work.
+  // Use SupervisorJob so if one job fails, it doesn't cancel the whole scope.
+  // IMPORTANT: Cancel this scope when the module is destroyed to avoid leaks.
+  private val moduleScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
   var threadHandle: Thread? = null
 
@@ -455,6 +471,102 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  @ReactMethod
+  fun verifyCertificateChain(
+    certChainBase64: ReadableArray,
+    trustAnchorBase64: String,
+    options: ReadableMap,
+    promise: Promise
+  ) {
+    moduleScope.launch { // Launch in module's coroutine scope
+      try {
+        // 1. Convert ReadableArray to List<String> safely
+        val chainList: List<String> = mutableListOf<String>().apply {
+          for (i in 0 until certChainBase64.size()) {
+            add(certChainBase64.getString(i))
+          }
+        }
+
+        if (chainList.isEmpty()) {
+          throw IllegalArgumentException("Certificate chain array is empty.")
+        }
+
+        // 2. Parse options with defaults
+        // Use default values from X509VerificationOptions if keys are missing
+        // Parse options with defaults
+        val defaultOptions = X509VerificationOptions() // Get defaults from the data class
+
+        val connectTimeout = options.takeIf { it.hasKey("connectTimeout") }?.getInt("connectTimeout")
+          ?: defaultOptions.connectTimeout
+        val readTimeout = options.takeIf { it.hasKey("readTimeout") }?.getInt("readTimeout")
+          ?: defaultOptions.readTimeout
+        val requireCrl = options.takeIf { it.hasKey("requireCrl") }?.getBoolean("requireCrl")
+          ?: defaultOptions.requireCrl
+
+        val verificationOptions = X509VerificationOptions(
+          connectTimeout = connectTimeout,
+          readTimeout = readTimeout,
+          requireCrl = requireCrl
+        )
+
+        // 3. Call the utility function
+        val result: X509VerificationUtils.ValidationResult = X509VerificationUtils.verifyCertificateChain(
+          certChainBase64 = chainList,
+          trustAnchorCertBase64 = trustAnchorBase64,
+          options = verificationOptions
+        )
+
+        // 4. Prepare the result map for React Native
+        val resultMap = Arguments.createMap().apply {
+          putBoolean("isValid", result.isValid)
+          putString("status", result.status.name)
+          putString("errorMessage", result.errorMessage ?: "")
+
+          result.failingCertificate?.let { cert ->
+            try {
+              val failingCertMap = Arguments.createMap().apply {
+                putString("subjectDN", cert.subjectX500Principal?.name ?: "Unknown")
+                putString("issuerDN", cert.issuerX500Principal?.name ?: "Unknown")
+                putString("serialNumber", cert.serialNumber?.toString() ?: "Unknown")
+                putString("notBefore", cert.notBefore?.toString() ?: "Unknown")
+                putString("notAfter", cert.notAfter?.toString() ?: "Unknown")
+              }
+              putMap("failingCertificate", failingCertMap)
+            } catch (certEx: Exception) {
+              putString("failingCertificateError", "Could not retrieve details: ${certEx.message}")
+            }
+          }
+        }
+
+        // 5. Resolve the promise
+        promise.resolve(resultMap)
+
+      } catch (e: IllegalArgumentException) {
+        // Catch errors from parsing inputs (ReadableArray, ReadableMap)
+        ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(
+          promise,
+          Pair(ERROR_USER_INFO_KEY, "Invalid input arguments: ${e.message}")
+        )
+      }
+      catch (e: Exception) {
+        // Catch any other unexpected exception during the bridge call or validation setup
+        ModuleException.CERTIFICATE_CHAIN_VALIDATION_ERROR.reject(
+          promise,
+          Pair(ERROR_USER_INFO_KEY, e.message ?: "Unknown error during certificate validation bridge call")
+        )
+      }
+    }
+  }
+
+  // Cleaning up the coroutine scope when the module is destroyed
+  override fun invalidate() {
+    super.invalidate()
+    moduleScope.cancel() // Cancel all coroutines launched within this scope
+    threadHandle?.interrupt()
+    threadHandle = null
+  }
+
+
   companion object {
     const val NAME = "IoReactNativeCrypto"
     const val KEYSTORE_PROVIDER = "AndroidKeyStore"
@@ -511,6 +623,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       UNABLE_TO_SIGN(Exception("UNABLE_TO_SIGN")),
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
+      CERTIFICATE_CHAIN_VALIDATION_ERROR(Exception("CERTIFICATE_CHAIN_VALIDATION_ERROR")),
       UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
 
       fun reject(
