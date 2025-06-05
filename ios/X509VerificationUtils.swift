@@ -5,14 +5,17 @@ private let osstatus_errSecRevocationNoVerify: Int32 = -67611
 
 enum ValidationStatus: String, CaseIterable {
   case valid = "VALID"
-  case invalidChainPath = "INVALID_CHAIN_PATH" // Generic chain building/validation issue OR specific decoding/creation failure
-  case invalidTrustAnchor = "INVALID_TRUST_ANCHOR" // Anchor cert decode failed or wasn't trusted by SecTrustSetAnchorCertificates
-  case certificateExpired = "CERTIFICATE_EXPIRED"
-  case certificateNotYetValid = "CERTIFICATE_NOT_YET_VALID" // Note: May sometimes report as general trust error
-  // NOTE: Covers various revocation issues: confirmed revoked, fetch fail, parse fail etc.
-  case certificateRevoked = "CERTIFICATE_REVOKED" // Includes inability to check if kSecRevocationRequirePositiveResponse is used
-  case validationError = "VALIDATION_ERROR" // General error during the validation process setup or unexpected issue
-  case chainTooLong = "CHAIN_TOO_LONG"
+  case invalidChainPath = "INVALID_CHAIN_PATH" // Basic chain path validation failed (e.g., signature, structure)
+  case invalidTrustAnchor = "INVALID_TRUST_ANCHOR" // Provided trust anchor is invalid or does not match the chain
+  case certificateExpired = "CERTIFICATE_EXPIRED" // Certificate in the chain has expired
+  case certificateNotYetValid = "CERTIFICATE_NOT_YET_VALID" // Certificate is not yet valid
+  case certificateRevoked = "CERTIFICATE_REVOKED" // Certificate explicitly marked as revoked in CRL
+  case crlFetchFailed = "CRL_FETCH_FAILED" // Failed to download/access/validate a CRL (when CDPs were present)
+  case crlParseFailed = "CRL_PARSE_FAILED" // Failed to parse CRL content
+  case crlExpired = "CRL_EXPIRED" // CRL used is expired
+  case crlSignatureInvalid = "CRL_SIGNATURE_INVALID" // Signature on CRL is invalid
+  case crlRequiredButMissingCDP = "CRL_REQUIRED_BUT_MISSING_CDP" // CRLs required but no CDP present
+  case validationError = "VALIDATION_ERROR" // General/unexpected error during validation
 }
 
 struct ValidationResult {
@@ -96,6 +99,20 @@ class X509VerificationUtils {
       completion(ValidationResult(isValid: false, status: .invalidChainPath, errorMessage: errorMsg, failingCertificateInfo: nil))
       return
     }
+    
+    // --- 1.5 Special Case: Validate Trust Anchor Alone ---
+    if decodedChainObjectsFromInput.count == 1,
+       decodedChainObjectsFromInput.first == trustAnchorSecCert {
+
+        evaluateTrust(
+          certificateChain: [trustAnchorSecCert],
+          trustAnchor: trustAnchorSecCert,
+          options: options
+        ) { result in
+          completion(result)
+        }
+        return
+    }
 
     // --- 1.5 Pre-check for Chain Lengthening and Connection to Trust Anchor ---
     var effectiveChainForSecTrust: [SecCertificate] = []
@@ -113,7 +130,7 @@ class X509VerificationUtils {
             // If we have already found the connection point, any subsequent certificate
             // in the input chain is considered extraneous (lengthening).
           let errorMsg = "Certificate chain is longer than necessary. Extraneous certificate found at input index \(index)."
-          completion(ValidationResult(isValid: false, status: .chainTooLong, errorMessage: errorMsg, failingCertificateInfo: getCertificateInfo(currentCertInInputChain)))
+          completion(ValidationResult(isValid: false, status: .validationError, errorMessage: errorMsg, failingCertificateInfo: getCertificateInfo(currentCertInInputChain)))
             return
         }
 
@@ -150,80 +167,63 @@ class X509VerificationUtils {
 
   // --- Trust Evaluation Helper ---
   private func evaluateTrust(
-    certificateChain: [SecCertificate],
-    trustAnchor: SecCertificate,
-    options: X509VerificationOptions,
-    completion: @escaping (ValidationResult) -> Void
+      certificateChain: [SecCertificate],
+      trustAnchor: SecCertificate,
+      options: X509VerificationOptions,
+      completion: @escaping (ValidationResult) -> Void
   ) {
-    var optionalTrust: SecTrust?
+      var optionalTrust: SecTrust?
 
-    // --- Define Policies ---
-    let basicX509Policy = SecPolicyCreateBasicX509()
-    var revocationPolicyFlags = CFOptionFlags(kSecRevocationUseAnyAvailableMethod) // Default
-    if options.requireCrl {
-        revocationPolicyFlags |= CFOptionFlags(kSecRevocationRequirePositiveResponse)
-    }
-    let revocationPolicy = SecPolicyCreateRevocation(revocationPolicyFlags)
+      // --- Basic Policy Only ---
+      let basicX509Policy = SecPolicyCreateBasicX509()
+      let currentPolicies: [SecPolicy] = [basicX509Policy]
 
-    let policyRefs: [SecPolicy?] = [basicX509Policy, revocationPolicy]
-    let policies: [SecPolicy] = policyRefs.compactMap { $0 }
-
-    let expectedPolicyCount = 2
-    if policies.count != expectedPolicyCount {
-      let errorMsg = "Failed to create required SecPolicy objects (Expected \(expectedPolicyCount), Created: \(policies.count))."
-      completion(ValidationResult(isValid: false, status: .validationError, errorMessage: errorMsg, failingCertificateInfo: nil))
-      return
-    }
-
-    // --- Create SecTrust Object ---
-    let createStatus = SecTrustCreateWithCertificates(certificateChain as CFArray, policies as CFArray, &optionalTrust)
-    guard createStatus == errSecSuccess, let trust = optionalTrust else {
-      let errorMsg = "Failed to create SecTrust object. Status: \(createStatus)"
-      completion(ValidationResult(isValid: false, status: .validationError, errorMessage: errorMsg, failingCertificateInfo: nil))
-      return
-    }
-
-    // --- Configure Trust Object ---
-    let anchorArray = [trustAnchor] as CFArray
-    let setAnchorStatus = SecTrustSetAnchorCertificates(trust, anchorArray)
-    guard setAnchorStatus == errSecSuccess else {
-      let errorMsg = "Failed to set custom anchor certificates. Status: \(setAnchorStatus)"
-      completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: nil))
-      return
-    }
-    let setAnchorOnlyStatus = SecTrustSetAnchorCertificatesOnly(trust, true)
-    guard setAnchorOnlyStatus == errSecSuccess else {
-      let anchorInfo = getCertificateInfo(trustAnchor)
-      let errorMsg = "Failed to restrict trust to custom anchors only. Status: \(setAnchorOnlyStatus)"
-      completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: errorMsg, failingCertificateInfo: anchorInfo))
-      return
-    }
-
-    // --- Evaluate Trust Asynchronously ---
-    SecTrustEvaluateAsyncWithError(trust, DispatchQueue.global(qos: .userInitiated)) { secTrust, success, error in
-      let currentTrust = secTrust
-
-      var evaluationResult: ValidationResult
-      if success {
-        var trustResultType: SecTrustResultType = .invalid
-        let getResultStatus = SecTrustGetTrustResult(currentTrust, &trustResultType)
-
-        if getResultStatus == errSecSuccess && (trustResultType == .proceed || trustResultType == .unspecified) {
-          evaluationResult = ValidationResult(isValid: true, status: .valid, errorMessage: nil, failingCertificateInfo: nil)
-        } else {
-          evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, options:options, error: error)
-        }
-      } else {
-        // Evaluation failed directly ('success' is false, 'error' should be non-nil)
-        var trustResultType: SecTrustResultType = .fatalTrustFailure
-        SecTrustGetTrustResult(currentTrust, &trustResultType)
-        evaluationResult = self.mapErrorToValidationResult(trust: currentTrust, resultType: trustResultType, options:options, error: error)
+      // --- Create SecTrust ---
+      let createStatus = SecTrustCreateWithCertificates(certificateChain as CFArray, currentPolicies as CFArray, &optionalTrust)
+      guard createStatus == errSecSuccess, let trust = optionalTrust else {
+          let msg = "Failed to create SecTrust. Status: \(createStatus)"
+          let info = certificateChain.first.map { getCertificateInfo($0) }
+          completion(ValidationResult(isValid: false, status: .validationError, errorMessage: msg, failingCertificateInfo: info))
+          return
       }
 
-      DispatchQueue.main.async {
-        completion(evaluationResult)
+      // --- Configure Anchors ---
+      let anchors = [trustAnchor] as CFArray
+      guard SecTrustSetAnchorCertificates(trust, anchors) == errSecSuccess,
+            SecTrustSetAnchorCertificatesOnly(trust, true) == errSecSuccess else {
+          let msg = "Failed to set custom trust anchor"
+          let info = getCertificateInfo(trustAnchor)
+          completion(ValidationResult(isValid: false, status: .invalidTrustAnchor, errorMessage: msg, failingCertificateInfo: info))
+          return
       }
-    }
+
+      // --- Evaluate Trust ---
+      SecTrustEvaluateAsyncWithError(trust, DispatchQueue.global(qos: .userInitiated)) { evaluatedTrust, success, error in
+          var result: ValidationResult
+
+          if success {
+              var trustResultType: SecTrustResultType = .invalid
+              SecTrustGetTrustResult(evaluatedTrust, &trustResultType)
+              if trustResultType == .proceed || trustResultType == .unspecified {
+                  result = ValidationResult(isValid: true, status: .valid, errorMessage: nil, failingCertificateInfo: nil)
+              } else {
+                  result = self.mapErrorToValidationResult(trust: evaluatedTrust, resultType: trustResultType, options: options, error: error)
+              }
+          } else {
+              var trustResultType: SecTrustResultType = .fatalTrustFailure
+              SecTrustGetTrustResult(evaluatedTrust, &trustResultType)
+              result = self.mapErrorToValidationResult(trust: evaluatedTrust, resultType: trustResultType, options: options, error: error)
+          }
+
+          // --- Manual CRL Check ---
+          if options.requireCrl {
+              self.checkManualRevocationIfNeeded(trust: evaluatedTrust, completion: completion, fallbackResult: result)
+          } else {
+              DispatchQueue.main.async {
+                  completion(result)
+              }
+          }
+      }
   }
 
   // --- Error Mapping Helper ---
@@ -270,11 +270,17 @@ class X509VerificationUtils {
           finalStatus = .certificateRevoked
           finalMessage = "Revocation check failed: \(nsError.localizedDescription)"
         default:
-          if options.requireCrl && (resultType == .deny || resultType == .fatalTrustFailure || resultType == .recoverableTrustFailure) {
-              finalStatus = .certificateRevoked
-              finalMessage += " (Trust evaluation failed; CRLs were mandatory, and revocation check failed.)"
+          if options.requireCrl {
+            switch resultType {
+            case .deny, .fatalTrustFailure, .recoverableTrustFailure:
+              finalStatus = .crlFetchFailed
+              finalMessage += " (Trust evaluation failed and CRLs were required, likely due to a revocation-related failure.)"
+            default:
+              finalStatus = .validationError
+              finalMessage += " (Unhandled result type with CRLs required.)"
+            }
           } else {
-              finalStatus = .invalidChainPath // Default for other unhandled OSStatus codes
+            finalStatus = .invalidChainPath
           }
         }
       } else {
@@ -311,5 +317,58 @@ class X509VerificationUtils {
     var info: [String: String] = [:]
     info["subjectSummary"] = SecCertificateCopySubjectSummary(certificate) as String? ?? "Unknown"
     return info
+  }
+  
+  private func checkManualRevocationIfNeeded(
+    trust: SecTrust,
+    completion: @escaping (ValidationResult) -> Void,
+    fallbackResult: ValidationResult
+  ) {
+    guard let leafCert = SecTrustGetCertificateAtIndex(trust, 0) else {
+      completion(fallbackResult)
+      return
+    }
+
+    let leafCertData = SecCertificateCopyData(leafCert) as Data
+
+    guard let crlURL = X509RevocationChecker.extractCRLDistributionPoint(from: leafCertData) else {
+      completion(ValidationResult(
+        isValid: false,
+        status: .crlRequiredButMissingCDP,
+        errorMessage: "CRL required but no CDP found in certificate.",
+        failingCertificateInfo: getCertificateInfo(leafCert)
+      ))
+      return
+    }
+
+    let issuerCert: SecCertificate? = SecTrustGetCertificateCount(trust) > 1
+      ? SecTrustGetCertificateAtIndex(trust, 1)
+      : nil
+    let issuerDER: Data? = issuerCert.map { SecCertificateCopyData($0) as Data }
+
+    X509RevocationChecker.isCertRevokedByCRL(certDER: leafCertData, issuerDER: issuerDER, crlURL: crlURL) { isRevoked, statusRaw in
+      DispatchQueue.main.async {
+        if let revoked = isRevoked {
+          if revoked {
+            completion(ValidationResult(
+              isValid: false,
+              status: .certificateRevoked,
+              errorMessage: "Leaf certificate is revoked according to CRL: \(crlURL)",
+              failingCertificateInfo: self.getCertificateInfo(leafCert)
+            ))
+          } else {
+            completion(fallbackResult)
+          }
+        } else {
+          let status = ValidationStatus(rawValue: statusRaw ?? "") ?? .validationError
+          completion(ValidationResult(
+            isValid: false,
+            status: status,
+            errorMessage: "Manual CRL check failed (\(statusRaw ?? "Unknown"))",
+            failingCertificateInfo: self.getCertificateInfo(leafCert)
+          ))
+        }
+      }
+    }
   }
 }
