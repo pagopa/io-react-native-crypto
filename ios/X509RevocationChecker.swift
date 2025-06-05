@@ -21,11 +21,11 @@ import Security
     certDER: Data,
     issuerDER: Data?,
     crlURL: URL,
-    completion: @escaping (Bool?, String?) -> Void
+    completion: @escaping (Bool?, Int32?) -> Void
   ) {
     fetchCRL(from: crlURL) { crlData, fetchError in
       guard let crlData = crlData else {
-        completion(nil, "Failed to fetch CRL: \(fetchError ?? "Unknown error")")
+        completion(nil, fetchError)
         return
       }
 
@@ -55,14 +55,22 @@ import Security
       }
 
       switch result {
-      case 1: completion(true, nil)
-      case 0: completion(false, nil)
-      case -1: completion(nil, ValidationStatus.validationError.rawValue)
-      case -2: completion(nil, ValidationStatus.crlParseFailed.rawValue)
-      case -3: completion(nil, ValidationStatus.crlSignatureInvalid.rawValue)
-      case -4: completion(nil, ValidationStatus.crlExpired.rawValue)
-      case -5: completion(nil, ValidationStatus.validationError.rawValue)
-      default: completion(nil, ValidationStatus.validationError.rawValue)
+      case 1:
+        completion(true, nil)
+      case 0:
+        completion(false, nil)
+      case -1, -6:
+        completion(nil, -1) // .validationError
+      case -2:
+        completion(nil, -2) // .crlParseFailed
+      case -3:
+        completion(nil, -3) // .crlSignatureInvalid
+      case -4:
+        completion(nil, -4) // .crlExpired
+      case -5:
+        completion(nil, -5) // .fetchFailed
+      default:
+        completion(nil, -999) // Unknown/fallback error
       }
     }
   }
@@ -91,17 +99,17 @@ import Security
   ///   - completion: Callback that returns the raw CRL data, or an error message if the download fails.
   ///                Timeout is fixed at 10 seconds and ignores local cache.
   private static func fetchCRL(
-    from url: URL, completion: @escaping (Data?, String?) -> Void
+    from url: URL, completion: @escaping (Data?, Int32?) -> Void
   ) {
     let request = URLRequest(
       url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
     let task = URLSession.shared.dataTask(with: request) { data, _, error in
       if error != nil {
-        completion(nil, ValidationStatus.crlFetchFailed.rawValue)
+        completion(nil, -5)
         return
       }
       guard let data = data else {
-        completion(nil, ValidationStatus.crlFetchFailed.rawValue)
+        completion(nil, -5)
         return
       }
       completion(data, nil)

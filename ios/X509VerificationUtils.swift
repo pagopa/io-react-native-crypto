@@ -319,6 +319,27 @@ class X509VerificationUtils {
     return info
   }
   
+  /// Maps an `Int32` CRL validation error code (from the native C/OpenSSL layer)
+  /// to a corresponding `ValidationStatus` enum case.
+  ///
+  /// This enables strong typing and centralized handling of known CRL errors
+  /// (e.g., parse failure, signature invalidity, expiration, etc.) during
+  /// manual revocation checks.
+  ///
+  /// - Parameter code: The error code returned by the native revocation function.
+  /// - Returns: A `ValidationStatus` matching the error context, or `.validationError` as fallback.
+  private func mapCRLErrorCodeToStatus(_ code: Int32) -> ValidationStatus {
+    switch code {
+    case -1: return .validationError
+    case -2: return .crlFetchFailed
+    case -3: return .crlSignatureInvalid
+    case -4: return .crlExpired
+    case -5: return .crlFetchFailed
+    default: return .validationError
+    }
+  }
+
+  
   private func checkManualRevocationIfNeeded(
     trust: SecTrust,
     completion: @escaping (ValidationResult) -> Void,
@@ -346,7 +367,7 @@ class X509VerificationUtils {
       : nil
     let issuerDER: Data? = issuerCert.map { SecCertificateCopyData($0) as Data }
 
-    X509RevocationChecker.isCertRevokedByCRL(certDER: leafCertData, issuerDER: issuerDER, crlURL: crlURL) { isRevoked, statusRaw in
+    X509RevocationChecker.isCertRevokedByCRL(certDER: leafCertData, issuerDER: issuerDER, crlURL: crlURL) { isRevoked, errorCode in
       DispatchQueue.main.async {
         if let revoked = isRevoked {
           if revoked {
@@ -360,11 +381,11 @@ class X509VerificationUtils {
             completion(fallbackResult)
           }
         } else {
-          let status = ValidationStatus(rawValue: statusRaw ?? "") ?? .validationError
+          let status = self.mapCRLErrorCodeToStatus(errorCode ?? -999)
           completion(ValidationResult(
             isValid: false,
             status: status,
-            errorMessage: "Manual CRL check failed (\(statusRaw ?? "Unknown"))",
+            errorMessage: "Manual CRL check failed (status code: \(errorCode ?? -999))",
             failingCertificateInfo: self.getCertificateInfo(leafCert)
           ))
         }
