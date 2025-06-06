@@ -7,10 +7,12 @@ PODS:
   - hermes-engine (0.75.4):
     - hermes-engine/Pre-built (= 0.75.4)
   - hermes-engine/Pre-built (0.75.4)
-  - pagopa-io-react-native-crypto (1.0.1):
+  - OpenSSL-Universal (3.3.3000)
+  - pagopa-io-react-native-crypto (1.1.0):
     - DoubleConversion
     - glog
     - hermes-engine
+    - OpenSSL-Universal
     - RCT-Folly (= 2024.01.01.00)
     - RCTRequired
     - RCTTypeSafety
@@ -1590,6 +1592,7 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - OpenSSL-Universal
     - SocketRocket
 
 EXTERNAL SOURCES:
@@ -1728,7 +1731,8 @@ SPEC CHECKSUMS:
   fmt: 4c2741a687cc09f0634a2e2c72a838b99f1ff120
   glog: 69ef571f3de08433d766d614c73a9838a06bf7eb
   hermes-engine: ea92f60f37dba025e293cbe4b4a548fd26b610a0
-  pagopa-io-react-native-crypto: c034b48871e47aefa569eda55cdb8432dab91aa5
+  OpenSSL-Universal: d776ce24dab24323e6995dfb17c64d598885d05c
+  pagopa-io-react-native-crypto: a603a82ca7be982f819c8c6e3bcc9e2afcfc1cd3
   RCT-Folly: 34124ae2e667a0e5f0ea378db071d27548124321
   RCTDeprecation: 726d24248aeab6d7180dac71a936bbca6a994ed1
   RCTRequired: a94e7febda6db0345d207e854323c37e3a31d93b

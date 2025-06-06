@@ -78,14 +78,17 @@ export type PublicKey = ECKey | RSAKey;
  */
 export enum CertificateValidationStatus {
   VALID = 'VALID',
-  INVALID_CHAIN = 'INVALID_CHAIN', // This might need more granularity
-  EXPIRED = 'EXPIRED',
-  NOT_YET_VALID = 'NOT_YET_VALID',
-  REVOKED = 'REVOKED',
-  VALIDATION_ERROR = 'VALIDATION_ERROR',
-  CHAIN_TOO_LONG = 'CHAIN_TOO_LONG',
-  CRL_REQUIRED_BUT_MISSING_CDP = 'CRL_REQUIRED_BUT_MISSING_CDP',
-  INVALID_TRUST_ANCHOR = 'INVALID_TRUST_ANCHOR'
+  INVALID_CHAIN_PATH = 'INVALID_CHAIN_PATH', // Basic chain path validation failed (e.g., signature, structure)
+  INVALID_TRUST_ANCHOR = 'INVALID_TRUST_ANCHOR', // Provided trust anchor is invalid or does not match the chain
+  EXPIRED = 'CERTIFICATE_EXPIRED', // A certificate in the chain has expired
+  NOT_YET_VALID = 'CERTIFICATE_NOT_YET_VALID', // A certificate in the chain is not yet valid
+  REVOKED = 'CERTIFICATE_REVOKED', // Certificate explicitly marked as revoked in CRL
+  CRL_FETCH_FAILED = 'CRL_FETCH_FAILED', // Failed to download/access/validate a CRL (when CDPs were present)
+  CRL_PARSE_FAILED = 'CRL_PARSE_FAILED', // Failed to parse CRL content
+  CRL_EXPIRED = 'CRL_EXPIRED', // CRL used is expired
+  CRL_SIGNATURE_INVALID = 'CRL_SIGNATURE_INVALID', // Signature on CRL is invalid
+  CRL_REQUIRED_BUT_MISSING_CDP = 'CRL_REQUIRED_BUT_MISSING_CDP', // CRLs required but no CDP present
+  VALIDATION_ERROR = 'VALIDATION_ERROR', // General/unexpected error during validation
 }
 
 /**

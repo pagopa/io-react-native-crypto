@@ -2,7 +2,7 @@
 class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
   private let keyConfig: KeyConfig = .ec
-
+  
   @objc(verifyCertificateChain:withTrustAnchorBase64:withOptions:withResolver:withRejecter:)
   func verifyCertificateChain(
     certChainBase64: NSArray,

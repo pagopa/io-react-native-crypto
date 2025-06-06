@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		F12483922DC11DBC0035AC47 /* X509VerificationUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12483912DC11DBC0035AC47 /* X509VerificationUtils.swift */; };
+		F1E282E72DF1C446005820B1 /* CRLChecker.mm in Sources */ = {isa = PBXBuildFile; fileRef = F1E282E52DF1C446005820B1 /* CRLChecker.mm */; };
+		F1E282E82DF1C446005820B1 /* X509RevocationChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E282E62DF1C446005820B1 /* X509RevocationChecker.swift */; };
 		F4FF95D7245B92E800C19C63 /* IoReactNativeCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FF95D6245B92E800C19C63 /* IoReactNativeCrypto.swift */; };
 /* End PBXBuildFile section */
 
@@ -27,6 +29,9 @@
 		134814201AA4EA6300B7C361 /* libIoReactNativeCrypto.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libIoReactNativeCrypto.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		B3E7B5891CC2AC0600A0062D /* IoReactNativeCrypto.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = IoReactNativeCrypto.m; sourceTree = "<group>"; };
 		F12483912DC11DBC0035AC47 /* X509VerificationUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = X509VerificationUtils.swift; sourceTree = "<group>"; };
+		F1E282E42DF1C446005820B1 /* CRLChecker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CRLChecker.h; sourceTree = "<group>"; };
+		F1E282E52DF1C446005820B1 /* CRLChecker.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CRLChecker.mm; sourceTree = "<group>"; };
+		F1E282E62DF1C446005820B1 /* X509RevocationChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = X509RevocationChecker.swift; sourceTree = "<group>"; };
 		F4FF95D5245B92E700C19C63 /* IoReactNativeCrypto-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "IoReactNativeCrypto-Bridging-Header.h"; sourceTree = "<group>"; };
 		F4FF95D6245B92E800C19C63 /* IoReactNativeCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoReactNativeCrypto.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -53,6 +58,9 @@
 		58B511D21A9E6C8500147676 = {
 			isa = PBXGroup;
 			children = (
+				F1E282E42DF1C446005820B1 /* CRLChecker.h */,
+				F1E282E52DF1C446005820B1 /* CRLChecker.mm */,
+				F1E282E62DF1C446005820B1 /* X509RevocationChecker.swift */,
 				F12483912DC11DBC0035AC47 /* X509VerificationUtils.swift */,
 				F4FF95D6245B92E800C19C63 /* IoReactNativeCrypto.swift */,
 				B3E7B5891CC2AC0600A0062D /* IoReactNativeCrypto.m */,
@@ -120,6 +128,8 @@
 			files = (
 				F12483922DC11DBC0035AC47 /* X509VerificationUtils.swift in Sources */,
 				F4FF95D7245B92E800C19C63 /* IoReactNativeCrypto.swift in Sources */,
+				F1E282E72DF1C446005820B1 /* CRLChecker.mm in Sources */,
+				F1E282E82DF1C446005820B1 /* X509RevocationChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
