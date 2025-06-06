@@ -59,7 +59,7 @@ import Security
         completion(true, nil)
       case 0:
         completion(false, nil)
-      case -1, -6:
+      case -1, -7:
         completion(nil, -1) // .validationError
       case -2:
         completion(nil, -2) // .crlParseFailed
@@ -68,7 +68,9 @@ import Security
       case -4:
         completion(nil, -4) // .crlExpired
       case -5:
-        completion(nil, -5) // .fetchFailed
+        completion(nil, -5) // .validationError
+      case -6:
+        completion(nil, -6) // .fetchFailed
       default:
         completion(nil, -999) // Unknown/fallback error
       }
@@ -105,11 +107,11 @@ import Security
       url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
     let task = URLSession.shared.dataTask(with: request) { data, _, error in
       if error != nil {
-        completion(nil, -5)
+        completion(nil, -6)
         return
       }
       guard let data = data else {
-        completion(nil, -5)
+        completion(nil, -2)
         return
       }
       completion(data, nil)
