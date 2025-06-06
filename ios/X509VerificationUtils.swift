@@ -44,10 +44,17 @@ struct ValidationResult {
   }
 }
 
+/// Configuration options for X.509 certificate validation.
 struct X509VerificationOptions {
-  // Note: Timeouts are informational only in Swift SecTrust context
+  /// Connection timeout in milliseconds (currently unused in iOS implementation).
+  /// Included for API parity or future use if lower-level networking is adopted.
   let connectTimeout: Int
+
+  /// Read timeout in milliseconds. This is used to limit the duration of CRL fetch requests.
   let readTimeout: Int
+
+  /// If `true`, CRL (Certificate Revocation List) checks are enforced.
+  /// Validation will fail if CRL cannot be fetched or parsed.
   let requireCrl: Bool
 }
 
@@ -302,7 +309,8 @@ class X509VerificationUtils {
       // --- Manual CRL Check ---
       if options.requireCrl {
         self.evaluateCRLRevocationStatus(
-          trust: evaluatedTrust, completion: completion, fallbackResult: result)
+          trust: evaluatedTrust, options: options, completion: completion,
+          fallbackResult: result)
       } else {
         DispatchQueue.main.async {
           completion(result)
@@ -478,6 +486,7 @@ class X509VerificationUtils {
   ///   - fallbackResult: The result of the initial trust evaluation to fall back to if CRL check succeeds or is skipped.
   private func evaluateCRLRevocationStatus(
     trust: SecTrust,
+    options: X509VerificationOptions,
     completion: @escaping (ValidationResult) -> Void,
     fallbackResult: ValidationResult
   ) {
@@ -509,7 +518,8 @@ class X509VerificationUtils {
     let issuerDER: Data? = issuerCert.map { SecCertificateCopyData($0) as Data }
 
     X509RevocationChecker.isCertRevokedByCRL(
-      certDER: leafCertData, issuerDER: issuerDER, crlURL: crlURL
+      certDER: leafCertData, issuerDER: issuerDER, crlURL: crlURL,
+      readTimeout: options.readTimeout
     ) { isRevoked, errorCode in
       DispatchQueue.main.async {
         if let revoked = isRevoked {

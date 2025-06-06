@@ -21,34 +21,52 @@ import Security
     certDER: Data,
     issuerDER: Data?,
     crlURL: URL,
+    readTimeout: Int,
     completion: @escaping (Bool?, Int32?) -> Void
   ) {
-    fetchCRL(from: crlURL) { crlData, fetchError in
+    fetchCRL(from: crlURL, timeout: TimeInterval(readTimeout) / 1000.0) {
+      crlData, fetchError in
       guard let crlData = crlData else {
         completion(nil, fetchError)
         return
       }
 
+      // Guard against empty cert or crl (which would make baseAddress nil)
+      guard !certDER.isEmpty, !crlData.isEmpty else {
+        completion(nil, -2)
+        return
+      }
+
       let result: Int32 = certDER.withUnsafeBytes { certBytes in
         crlData.withUnsafeBytes { crlBytes in
-          if let issuer = issuerDER {
+          guard let certPtr = certBytes.baseAddress,
+            let crlPtr = crlBytes.baseAddress
+          else {
+            return -998
+          }
+
+          if let issuer = issuerDER, !issuer.isEmpty {
             return issuer.withUnsafeBytes { issuerBytes in
+              guard let issuerPtr = issuerBytes.baseAddress else {
+                return -998
+              }
+
               return check_cert_revocation_with_crl(
-                certBytes.baseAddress!.assumingMemoryBound(to: UInt8.self),
+                certPtr.assumingMemoryBound(to: UInt8.self),
                 Int32(certDER.count),
-                crlBytes.baseAddress!.assumingMemoryBound(to: UInt8.self),
+                crlPtr.assumingMemoryBound(to: UInt8.self),
                 Int32(crlData.count),
-                issuerBytes.baseAddress!.assumingMemoryBound(to: UInt8.self),
+                issuerPtr.assumingMemoryBound(to: UInt8.self),
                 Int32(issuer.count)
               )
             }
           } else {
             return check_cert_revocation_with_crl(
-              certBytes.baseAddress!.assumingMemoryBound(to: UInt8.self),
+              certPtr.assumingMemoryBound(to: UInt8.self),
               Int32(certDER.count),
-              crlBytes.baseAddress!.assumingMemoryBound(to: UInt8.self),
+              crlPtr.assumingMemoryBound(to: UInt8.self),
               Int32(crlData.count),
-              UnsafePointer<UInt8>(bitPattern: 0)!, 0
+              nil, 0
             )
           }
         }
@@ -60,23 +78,22 @@ import Security
       case 0:
         completion(false, nil)
       case -1, -7:
-        completion(nil, -1) // .validationError
+        completion(nil, -1)  // .validationError
       case -2:
-        completion(nil, -2) // .crlParseFailed
+        completion(nil, -2)  // .crlParseFailed
       case -3:
-        completion(nil, -3) // .crlSignatureInvalid
+        completion(nil, -3)  // .crlSignatureInvalid
       case -4:
-        completion(nil, -4) // .crlExpired
+        completion(nil, -4)  // .crlExpired
       case -5:
-        completion(nil, -5) // .validationError
+        completion(nil, -5)  // .validationError
       case -6:
-        completion(nil, -6) // .fetchFailed
+        completion(nil, -6)  // .fetchFailed
       default:
-        completion(nil, -999) // Unknown/fallback error
+        completion(nil, -999)  // Unknown/fallback error
       }
     }
   }
-
   /// Extracts the first CRL Distribution Point URI from a DER-encoded certificate.
   /// Uses OpenSSL to parse the certificate and find the CRL URL.
   ///
@@ -101,10 +118,12 @@ import Security
   ///   - completion: Callback that returns the raw CRL data, or an error message if the download fails.
   ///                Timeout is fixed at 10 seconds and ignores local cache.
   private static func fetchCRL(
-    from url: URL, completion: @escaping (Data?, Int32?) -> Void
+    from url: URL, timeout: TimeInterval,
+    completion: @escaping (Data?, Int32?) -> Void
   ) {
     let request = URLRequest(
-      url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+      url: url, cachePolicy: .reloadIgnoringLocalCacheData,
+      timeoutInterval: timeout)
     let task = URLSession.shared.dataTask(with: request) { data, _, error in
       if error != nil {
         completion(nil, -6)

@@ -17,7 +17,7 @@ import {
   sign, verifyCertificateChain,
 } from '@pagopa/io-react-native-crypto';
 import {
-  mockCertificateChainFrom,
+  mockCertificateChainReal,
 } from './mocks/certifaces.mock';
 
 export default function App() {
@@ -125,9 +125,9 @@ export default function App() {
             <Button
               title="verifyCertificates"
               onPress={() => {
-                verifyCertificateChain(mockCertificateChainFrom.x5c, mockCertificateChainFrom.trustAnchorCert, {
-                  connectTimeout: 1000,
-                  readTimeout: 1000,
+                verifyCertificateChain(mockCertificateChainReal.x5c, mockCertificateChainReal.trustAnchorCert, {
+                  connectTimeout: 10000,
+                  readTimeout: 10000,
                   requireCrl: true
                 })
                   .then((result) => {

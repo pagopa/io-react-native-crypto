@@ -9,7 +9,7 @@ extern "C" {
 int check_cert_revocation_with_crl(
                                    const unsigned char *cert_der, int cert_len,
                                    const unsigned char *crl_der, int crl_len,
-                                   const unsigned char *issuer_der_or_null, int issuer_len
+                                   const unsigned char * _Nullable issuer_der_or_null, int issuer_len
                                    );
 
 const char * _Nullable extractCRLFromCert(const unsigned char *cert_der, int cert_len);
