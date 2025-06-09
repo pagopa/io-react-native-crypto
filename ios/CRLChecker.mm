@@ -35,6 +35,10 @@ int check_cert_revocation_with_crl(const unsigned char *cert_der, int cert_len,
                                    const unsigned char *crl_der, int crl_len,
                                    const unsigned char * _Nullable issuer_der_or_null,
                                    int issuer_len) {
+  if (issuer_der_or_null == NULL || issuer_len <= 0) {
+    return -5;
+  }
+  
   const unsigned char *ptr = cert_der;
   X509 *cert = d2i_X509(NULL, &ptr, cert_len);
   if (!cert)

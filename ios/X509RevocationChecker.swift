@@ -31,6 +31,11 @@ import Security
         return
       }
 
+      guard let issuer = issuerDER, !issuer.isEmpty else {
+        completion(nil, -5)
+        return
+      }
+      
       // Guard against empty cert or crl (which would make baseAddress nil)
       guard !certDER.isEmpty, !crlData.isEmpty else {
         completion(nil, -2)
@@ -106,6 +111,9 @@ import Security
       else { return nil }
       guard let cString = extractCRLFromCert(base, Int32(certDER.count)) else {
         return nil
+      }
+      defer {
+        free(UnsafeMutableRawPointer(mutating: cString))
       }
       return URL(string: String(cString: cString))
     }
