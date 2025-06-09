@@ -16,7 +16,9 @@ import {
   isKeyStrongboxBacked,
   sign, verifyCertificateChain,
 } from '@pagopa/io-react-native-crypto';
-import { mockCertificateChain } from './mocks/certifaces.mock';
+import {
+  mockCertificateChainReal,
+} from './mocks/certifaces.mock';
 
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
@@ -123,9 +125,9 @@ export default function App() {
             <Button
               title="verifyCertificates"
               onPress={() => {
-                verifyCertificateChain(mockCertificateChain.x5c, mockCertificateChain.trustAnchorCert, {
-                  connectTimeout: 1000,
-                  readTimeout: 1000,
+                verifyCertificateChain(mockCertificateChainReal.x5c, mockCertificateChainReal.trustAnchorCert, {
+                  connectTimeout: 10000,
+                  readTimeout: 10000,
                   requireCrl: true
                 })
                   .then((result) => {
