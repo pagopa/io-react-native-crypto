@@ -14,6 +14,10 @@ RCT_EXTERN_METHOD(getPublicKey:(NSString*)keyTag
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(getPublicKeyFixed:(NSString*)keyTag
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(isKeyStrongboxBacked:(NSString*)keyTag
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)

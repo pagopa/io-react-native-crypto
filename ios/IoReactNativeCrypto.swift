@@ -131,6 +131,34 @@ class IoReactNativeCrypto: NSObject {
     resolve(jwk)
   }
   
+  /// Returns the public key in strict JWK-compliant format.
+  /// - Encodes x and y using Base64URL (RFC 7515): no padding, URL-safe alphabet
+  /// - Keeps legacy getPublicKey separate for backward compatibility
+  @objc(getPublicKeyFixed:withResolver:withRejecter:)
+  func getPublicKeyFixed(
+    keyTag:String,
+    resolve:RCTPromiseResolveBlock,
+    reject:RCTPromiseRejectBlock
+  ) {
+    var privateKey: SecKey?
+    var status: OSStatus
+
+    (privateKey, status) = keyExists(keyTag: keyTag)
+    guard status == errSecSuccess else {
+      ModuleException.publicKeyNotFound.reject(reject: reject)
+      return
+    }
+
+    guard let privateKey = privateKey,
+          let publicKey = SecKeyCopyPublicKey(privateKey) else {
+      ModuleException.publicKeyNotFound.reject(reject: reject)
+      return
+    }
+
+    let jwk = jwkRepresentationFixed(publicKey)
+    resolve(jwk)
+  }
+  
   /// Always rejects the promise with UNSUPPORTED_DEVICE error as this method is Android only. It's still implemented to keep the same error structure.
   @objc(isKeyStrongboxBacked:withResolver:withRejecter:)
   func isKeyStrongboxBacked(
@@ -204,6 +232,29 @@ class IoReactNativeCrypto: NSObject {
       return jwk
     }
     return [:]
+  }
+  
+  /// Converts an EC public key into a JWK-compliant dictionary with Base64URL-encoded x and y
+  /// - Uses ANSI X9.63 format: 04 || X || Y
+  /// - Strips the leading byte 0x04 and encodes remaining 32-byte x and y using base64url
+  private func jwkRepresentationFixed(_ publicKey: SecKey) -> [String:String]? {
+    guard let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as? Data else {
+      return nil
+    }
+    let bytes = [UInt8](publicKeyData)
+    guard bytes.count == 65, bytes[0] == 0x04 else {
+      return nil
+    }
+
+    let x = Data(bytes[1...32]).base64UrlEncodedString()
+    let y = Data(bytes[33...64]).base64UrlEncodedString()
+
+    return [
+      "kty": "EC",
+      "crv": "P-256",
+      "x": x,
+      "y": y
+    ]
   }
   
   @objc(signUTF8Text:withKeyTag:withResolver:withRejecter:)
@@ -357,6 +408,17 @@ class IoReactNativeCrypto: NSObject {
       let error = error(userInfo: userInfo)
       reject("\(error.code)", error.domain, error)
     }
+  }
+}
+
+extension Data {
+  /// Converts the data to a base64url string (RFC 7515), without padding
+  /// - Replaces + with -, / with _, and removes trailing =
+  func base64UrlEncodedString() -> String {
+    return self.base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
   }
 }
 
