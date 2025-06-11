@@ -12,13 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.io.ByteArrayInputStream
 import java.security.*
-import java.security.cert.CertPathValidator
-import java.security.cert.CertificateFactory
-import java.security.cert.PKIXParameters
-import java.security.cert.TrustAnchor
-import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
@@ -324,6 +318,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     return true
   }
 
+  /**
+   * Returns the public key in JWK format.
+   * Legacy method:
+   * - Encodes parameters (x, y, n, e) using standard Base64 (not URL-safe)
+   * - May include padding (`=`) and a leading zero byte if present
+   * For a strict JWK-compliant representation, use `getPublicKeyFixed` instead.
+   */
   @ReactMethod
   fun getPublicKey(keyTag: String, promise: Promise) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -337,6 +338,56 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
   }
+
+  /**
+   * Returns the public key in strict JWK-compliant format.
+   * - Encodes using Base64URL (RFC 7515): no padding, URL-safe alphabet
+   * - Removes leading zero byte added by BigInteger.toByteArray()
+   * Supports both EC (P-256) and RSA (RS256) keys.
+   */
+  @ReactMethod
+  fun getPublicKeyFixed(keyTag: String, promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+      ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+      return
+    }
+
+    getKeyPair(keyTag)?.let {
+      val key = it.public
+      val nativeMap = WritableNativeMap()
+
+      when (key) {
+        is ECPublicKey -> {
+          val ecKey = key.w
+          val x = ecKey.affineX.toByteArray().toBase64UrlUIntBytes()
+          val y = ecKey.affineY.toByteArray().toBase64UrlUIntBytes()
+
+          nativeMap.putString("kty", "EC")
+          nativeMap.putString("crv", "P-256")
+          nativeMap.putString("x", x)
+          nativeMap.putString("y", y)
+        }
+        is RSAPublicKey -> {
+          val n = key.modulus.toByteArray().toBase64UrlUIntBytes()
+          val e = key.publicExponent.toByteArray().toBase64UrlUIntBytes()
+
+          nativeMap.putString("kty", "RSA")
+          nativeMap.putString("alg", "RS256")
+          nativeMap.putString("n", n)
+          nativeMap.putString("e", e)
+        }
+        else -> {
+          ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+          return
+        }
+      }
+      promise.resolve(nativeMap)
+      return
+    }
+
+    ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise, Pair("keyTag", keyTag))
+  }
+
 
   @ReactMethod
   fun isKeyStrongboxBacked(keyTag: String, promise: Promise) {
@@ -645,6 +696,17 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 
 fun ByteArray.base64NoWrap(): String {
   return Base64.encodeToString(this, Base64.NO_WRAP)
+}
+
+/**
+ * Encodes the byte array as a base64url string without padding,
+ * removing the leading 0x00 byte if present (to ensure unsigned integer representation).
+ */
+fun ByteArray.toBase64UrlUIntBytes(): String {
+  val sanitized = if (this.isNotEmpty() && this[0].toInt() == 0) {
+    this.copyOfRange(1, this.size)
+  } else this
+  return Base64.encodeToString(sanitized, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 }
 
 class KeyNotHardwareBacked(message: String?) : Exception(message)

@@ -12,7 +12,7 @@ import {
   CryptoError,
   deleteKey,
   generate,
-  getPublicKey,
+  getPublicKey, getPublicKeyFixed,
   isKeyStrongboxBacked,
   sign, verifyCertificateChain,
 } from '@pagopa/io-react-native-crypto';
@@ -70,6 +70,20 @@ export default function App() {
               title="get"
               onPress={() => {
                 getPublicKey(keyTag)
+                  .then((value) => {
+                    console.log(JSON.stringify(value));
+                    setLogText(JSON.stringify(value));
+                  })
+                  .catch((reason: CryptoError) => {
+                    console.log(reason);
+                    setLogText(`${reason}`);
+                  });
+              }}
+            />
+            <Button
+              title="getFixed"
+              onPress={() => {
+                getPublicKeyFixed(keyTag)
                   .then((value) => {
                     console.log(JSON.stringify(value));
                     setLogText(JSON.stringify(value));

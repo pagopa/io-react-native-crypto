@@ -130,17 +130,40 @@ const IoReactNativeCrypto = NativeModules.IoReactNativeCrypto
     );
 
 /**
- * This function returns the public key in its JWK format if it exists.
+ * Returns the public key in its JWK format using legacy encoding.
  *
- * If it is not possible to retrive the key, the promise is rejected providing an
- * instance of {@link CryptoError}.
+ * - Uses standard Base64 encoding (includes padding and non-URL-safe characters)
+ * - May include a leading zero byte in some fields (e.g., x, y, n, e)
  *
- * @param keyTag - the string key tag used to reference the key in the key store.
- * @returns a promise that resolves to the JWK representation of the public key.
+ * This method is kept for backward compatibility with older consumers that
+ * expect this specific encoding. For a strict, interoperable format (RFC 7515),
+ * use {@link getPublicKeyFixed} instead.
+ *
+ * If the key cannot be retrieved, the promise is rejected with an instance of {@link CryptoError}.
+ *
+ * @param keyTag - The key tag used to reference the key in secure storage.
+ * @returns A promise that resolves to the JWK representation of the public key.
  */
 export function getPublicKey(keyTag: string): Promise<PublicKey> {
   return IoReactNativeCrypto.getPublicKey(keyTag);
 }
+
+/**
+ * This function returns the public key in its strict JWK-compliant format if it exists.
+ *
+ * Compared to {@link getPublicKey}, this version:
+ * - Encodes coordinates (`x`, `y`) using Base64URL (RFC 7515), with no padding
+ *
+ * If it is not possible to retrieve the key, the promise is rejected providing an
+ * instance of {@link CryptoError}.
+ *
+ * @param keyTag - The key tag used to reference the key in secure storage.
+ * @returns a promise that resolves to the strict JWK representation of the public key.
+ */
+export function getPublicKeyFixed(keyTag: string): Promise<PublicKey> {
+  return IoReactNativeCrypto.getPublicKeyFixed(keyTag);
+}
+
 
 /**
  * This function generates a key pair and returns the public key
