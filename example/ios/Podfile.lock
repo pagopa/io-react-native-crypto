@@ -8,7 +8,7 @@ PODS:
     - hermes-engine/Pre-built (= 0.75.4)
   - hermes-engine/Pre-built (0.75.4)
   - OpenSSL-Universal (3.3.3000)
-  - pagopa-io-react-native-crypto (1.1.0):
+  - pagopa-io-react-native-crypto (1.1.1):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1732,7 +1732,7 @@ SPEC CHECKSUMS:
   glog: 69ef571f3de08433d766d614c73a9838a06bf7eb
   hermes-engine: ea92f60f37dba025e293cbe4b4a548fd26b610a0
   OpenSSL-Universal: d776ce24dab24323e6995dfb17c64d598885d05c
-  pagopa-io-react-native-crypto: a603a82ca7be982f819c8c6e3bcc9e2afcfc1cd3
+  pagopa-io-react-native-crypto: 7d89dc5925c5ae74f1ae59fb0d17aa73eda9e725
   RCT-Folly: 34124ae2e667a0e5f0ea378db071d27548124321
   RCTDeprecation: 726d24248aeab6d7180dac71a936bbca6a994ed1
   RCTRequired: a94e7febda6db0345d207e854323c37e3a31d93b
@@ -1793,4 +1793,4 @@ SPEC CHECKSUMS:
 
 PODFILE CHECKSUM: ae8555866cdddfd0942781077573184e87d74d14
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.15.2
