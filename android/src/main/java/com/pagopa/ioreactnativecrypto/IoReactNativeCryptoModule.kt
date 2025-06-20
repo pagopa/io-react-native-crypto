@@ -699,36 +699,44 @@ fun ByteArray.base64NoWrap(): String {
 }
 
 /**
- * Returns the byte array without a leading 0x00 sign-byte
+ * Returns the byte array without a leading 0x00 sign byte.
+ * This ensures the value is interpreted as an unsigned integer,
+ * which is necessary for JWK compliance.
  */
 private fun ByteArray.toUnsigned(): ByteArray =
   if (isNotEmpty() && this[0].toInt() == 0) copyOfRange(1, size) else this
 
 /**
+ * Encodes the byte array as a base64url string without padding.
+ * Ensures the value is treated as an unsigned integer by removing any leading 0x00 sign byte.
+ * This is suitable for JWK fields like `x`, `y`, `n`, and `e`.
+ */
+private fun ByteArray.toBase64UrlUnsigned(): String =
+  Base64.encodeToString(
+    this.toUnsigned(),
+    Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
+  )
+
+/**
  * Encodes the byte array as a base64url string without padding,
- * removing the leading 0x00 byte if present (to ensure unsigned integer representation).
- * throws `IllegalArgumentException` if the resulting length is not exactly 32 bytes (P-256 requirement).
+ * ensuring the result is exactly 32 bytes long as required for P-256 EC keys.
+ * Throws `IllegalArgumentException` if the resulting unsigned value is not 32 bytes.
  */
 private fun ByteArray.toEcBase64Url(): String {
   val unsigned = toUnsigned()
   require(unsigned.size == 32) {
     "Invalid EC coordinate length: ${unsigned.size} bytes (expected 32)"
   }
-
-  return Base64.encodeToString(
-    unsigned,
-    Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
-  )
+  return unsigned.toBase64UrlUnsigned()
 }
 
 /**
- * Encodes the byte array as a base64url string without padding,
- * removing the leading 0x00 byte if present (to ensure unsigned integer representation).
+ * Encodes the byte array as a base64url string without padding.
+ * Applies standard unsigned encoding (removes leading 0x00 if present).
+ * Suitable for RSA modulus (`n`) and exponent (`e`).
  */
 private fun ByteArray.toRsaBase64Url(): String =
-  Base64.encodeToString(
-    toUnsigned(),
-    Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
-  )
+  this.toBase64UrlUnsigned()
+
 
 class KeyNotHardwareBacked(message: String?) : Exception(message)
