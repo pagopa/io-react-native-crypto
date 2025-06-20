@@ -347,11 +347,6 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
    */
   @ReactMethod
   fun getPublicKeyFixed(keyTag: String, promise: Promise) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-      ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
-      return
-    }
-
     getKeyPair(keyTag)?.let {
       val key = it.public
       val nativeMap = WritableNativeMap()
