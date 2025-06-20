@@ -2,7 +2,7 @@
 class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
   private let keyConfig: KeyConfig = .ec
-  
+
   @objc(verifyCertificateChain:withTrustAnchorBase64:withOptions:withResolver:withRejecter:)
   func verifyCertificateChain(
     certChainBase64: NSArray,
@@ -19,17 +19,17 @@ class IoReactNativeCrypto: NSObject {
         }
         return
       }
-      
+
       let connectTimeoutOpt = options["connectTimeout"] as? Int ?? 15000
       let readTimeoutOpt = options["readTimeout"] as? Int ?? 15000
       let requireCrlOpt = options["requireCrl"] as? Bool ?? false
-      
+
       let verificationOptions = X509VerificationOptions(
         connectTimeout: connectTimeoutOpt,
         readTimeout: readTimeoutOpt,
         requireCrl: requireCrlOpt
       )
-      
+
       X509VerificationUtils.shared.verifyCertificateChain(
         certChainBase64: certChain,
         trustAnchorCertBase64: trustAnchorBase64,
@@ -42,7 +42,7 @@ class IoReactNativeCrypto: NSObject {
       }
     }
   }
-  
+
   @objc(generate:withResolver:withRejecter:)
   func generate(
     keyTag: String,
@@ -67,30 +67,30 @@ class IoReactNativeCrypto: NSObject {
         ME.keyAlreadyExists.reject(reject: reject)
         return
       }
-      
+
       do {
         privateKey = try self.generatePrivateKey(keyTag: keyTag)
       } catch {
         ME.wrongKeyConfiguration.reject(reject: reject)
         return
       }
-      
+
       guard let privateKey = privateKey,
             let publicKey = SecKeyCopyPublicKey(privateKey) else {
         ME.publicKeyNotFound.reject(reject: reject)
         return
       }
-      
+
       if let jwk = self.jwkRepresentation(publicKey) {
         // You can invoke callback from any thread/queue
         resolve(jwk)
         return
       }
-      
+
       ME.wrongKeyConfiguration.reject(reject: reject)
     }
   }
-  
+
   @objc(deletePublicKey:withResolver:withRejecter:)
   func deletePublicKey(
     keyTag:String,
@@ -105,7 +105,15 @@ class IoReactNativeCrypto: NSObject {
     resolve(true)
     return
   }
-  
+
+  /// Returns the public key in **legacy** JWK format.
+  /// - Encodes EC/RSA parameters (`x`, `y`, `n`, `e`) using **standard Base64**:
+  ///   includes `+`, `/`, and padding `=`.
+  /// - May contain a leading `0x00` byte in coordinates/modulus if added by
+  ///   `BigInteger` two’s-complement serialization.
+  /// - Kept for backward-compatibility.
+  ///   For a strict RFC 7515–compliant representation, use
+  ///   `getPublicKeyFixed`.
   @objc(getPublicKey:withResolver:withRejecter:)
   func getPublicKey(
     keyTag:String,
@@ -114,25 +122,27 @@ class IoReactNativeCrypto: NSObject {
   ) {
     var privateKey: SecKey?
     var status: OSStatus
-    
+
     (privateKey, status) = keyExists(keyTag: keyTag)
     guard status == errSecSuccess else {
       ME.publicKeyNotFound.reject(reject: reject)
       return
     }
-    
+
     guard let privateKey = privateKey,
           let publicKey = SecKeyCopyPublicKey(privateKey) else {
       ME.publicKeyNotFound.reject(reject: reject)
       return
     }
-    
+
     let jwk = jwkRepresentation(publicKey)
     resolve(jwk)
   }
-  
-  /// Returns the public key in strict JWK-compliant format.
-  /// - Encodes x and y using Base64URL (RFC 7515): no padding, URL-safe alphabet
+
+  /// Returns the public key in **strict** JWK-compliant format.
+  /// - Encodes EC (P-256) coordinates and RSA parameters using **Base64URL**
+  ///   (RFC 7515): URL-safe alphabet, **no padding `=`**, no newlines.
+  /// - Removes the leading `0x00` byte that `BigInteger.toByteArray()` may add.
   /// - Keeps legacy getPublicKey separate for backward compatibility
   @objc(getPublicKeyFixed:withResolver:withRejecter:)
   func getPublicKeyFixed(
@@ -140,10 +150,7 @@ class IoReactNativeCrypto: NSObject {
     resolve:RCTPromiseResolveBlock,
     reject:RCTPromiseRejectBlock
   ) {
-    var privateKey: SecKey?
-    var status: OSStatus
-
-    (privateKey, status) = keyExists(keyTag: keyTag)
+    let (privateKey, status) = keyExists(keyTag: keyTag)
     guard status == errSecSuccess else {
       ModuleException.publicKeyNotFound.reject(reject: reject)
       return
@@ -158,7 +165,7 @@ class IoReactNativeCrypto: NSObject {
     let jwk = jwkRepresentationFixed(publicKey)
     resolve(jwk)
   }
-  
+
   /// Always rejects the promise with UNSUPPORTED_DEVICE error as this method is Android only. It's still implemented to keep the same error structure.
   @objc(isKeyStrongboxBacked:withResolver:withRejecter:)
   func isKeyStrongboxBacked(
@@ -168,10 +175,10 @@ class IoReactNativeCrypto: NSObject {
   ) {
     ME.unsupportedDevice.reject(reject: reject)
   }
-  
+
   private func generatePrivateKey(keyTag: String) throws -> SecKey? {
     var error: Unmanaged<CFError>?
-    
+
     // Key ACL
     guard let access = SecAccessControlCreateWithFlags(
       kCFAllocatorDefault,
@@ -181,7 +188,7 @@ class IoReactNativeCrypto: NSObject {
     ) else {
       throw error!.takeRetainedValue() as Error
     }
-    
+
     // Key Attributes
     let attributes: NSMutableDictionary = [
       kSecAttrKeyType: keyConfig.keyType(),
@@ -192,17 +199,17 @@ class IoReactNativeCrypto: NSObject {
         kSecAttrAccessControl: access
       ]
     ]
-    
+
     if keyConfig == .ec {
       attributes[kSecAttrTokenID] = kSecAttrTokenIDSecureEnclave
     }
-    
+
     guard let key = SecKeyCreateRandomKey(attributes, &error) else {
       throw error!.takeRetainedValue() as Error
     }
     return key
   }
-  
+
   /// For an elliptic curve public key, the format follows the ANSI X9.63 standard using a byte string of 04 || X || Y
   /// https://developer.apple.com/documentation/security/1643698-seckeycopyexternalrepresentation
   private func jwkRepresentation(_ publicKey: SecKey) -> [String:String]? {
@@ -210,13 +217,13 @@ class IoReactNativeCrypto: NSObject {
         = SecKeyCopyExternalRepresentation(publicKey, nil) as? Data {
       var publicKeyBytes: [UInt8] = []
       publicKeyBytes = Array(publicKeyExtneralRepresentation)
-      
+
       // Sanity checks
       // 04 || X || Y -> "04" = 1, X = 32, Y = 32 -> 1+32+32 = 65
       guard publicKeyBytes.count == 65 else {
         return nil
       }
-      
+
       let xOctets = publicKeyBytes[1...32]
       let yOctets = publicKeyBytes[33...64]
       let y = String(decoding: Data(yOctets).base64EncodedData(), as: UTF8.self)
@@ -233,7 +240,7 @@ class IoReactNativeCrypto: NSObject {
     }
     return [:]
   }
-  
+
   /// Converts an EC public key into a JWK-compliant dictionary with Base64URL-encoded x and y
   /// - Uses ANSI X9.63 format: 04 || X || Y
   /// - Strips the leading byte 0x04 and encodes remaining 32-byte x and y using base64url
@@ -241,13 +248,12 @@ class IoReactNativeCrypto: NSObject {
     guard let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as? Data else {
       return nil
     }
-    let bytes = [UInt8](publicKeyData)
-    guard bytes.count == 65, bytes[0] == 0x04 else {
+    guard publicKeyData.count == 65, publicKeyData.first == 0x04 else {
       return nil
     }
 
-    let x = Data(bytes[1...32]).base64UrlEncodedString()
-    let y = Data(bytes[33...64]).base64UrlEncodedString()
+    let x = publicKeyData.subdata(in: 1..<33).base64UrlEncodedString()
+    let y = publicKeyData.subdata(in: 33..<65).base64UrlEncodedString()
 
     return [
       "kty": "EC",
@@ -256,7 +262,7 @@ class IoReactNativeCrypto: NSObject {
       "y": y
     ]
   }
-  
+
   @objc(signUTF8Text:withKeyTag:withResolver:withRejecter:)
   func signUTF8Text(
     message: String,
@@ -301,7 +307,7 @@ class IoReactNativeCrypto: NSObject {
       )
     }
   }
-  
+
   private func signData(
     _ message: Data,
     _ privateKey: SecKey,
@@ -318,7 +324,7 @@ class IoReactNativeCrypto: NSObject {
     }
     return (signature, nil)
   }
-  
+
   // https://developer.apple.com/documentation/security/certificate_key_and_trust_services/keys/storing_keys_in_the_keychain
   private func keyExists(keyTag: String) -> (key: SecKey?, status: OSStatus) {
     let getQuery = privateKeyKeychainQuery(keyTag: keyTag)
@@ -326,7 +332,7 @@ class IoReactNativeCrypto: NSObject {
     let status = SecItemCopyMatching(getQuery as CFDictionary, &item)
     return (status == errSecSuccess ? (item as! SecKey) : nil, status)
   }
-  
+
   private func privateKeyKeychainQuery(
     keyTag: String
   ) -> [String : Any] {
@@ -337,26 +343,26 @@ class IoReactNativeCrypto: NSObject {
       kSecReturnRef as String: true
     ]
   }
-  
+
   /// On iOS we support only EC but we put all EC config in an enum
   /// to support future different key types.
   private enum KeyConfig: Int, CaseIterable {
     case ec
-    
+
     func keyType() -> CFString {
       switch self {
       case .ec:
         return kSecAttrKeyTypeECSECPrimeRandom
       }
     }
-    
+
     func keySizeInBits() -> Int {
       switch self {
       case .ec:
         return 256
       }
     }
-    
+
     func keySignAlgorithm() -> SecKeyAlgorithm {
       switch self {
       case .ec:
@@ -364,7 +370,7 @@ class IoReactNativeCrypto: NSObject {
       }
     }
   }
-  
+
   private enum ModuleException: String, CaseIterable {
     case keyAlreadyExists = "KEY_ALREADY_EXISTS"
     case unsupportedDevice = "UNSUPPORTED_DEVICE"
@@ -376,7 +382,7 @@ class IoReactNativeCrypto: NSObject {
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
     case certificatesValidationError = "CERTIFICATE_CHAIN_VALIDATION_ERROR"
-    
+
     func error(userInfo: [String : Any]? = nil) -> NSError {
       switch self {
       case .keyAlreadyExists:
@@ -401,7 +407,7 @@ class IoReactNativeCrypto: NSObject {
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       }
     }
-    
+
     func reject(reject: RCTPromiseRejectBlock, _ moreUserInfo: (String, Any)...) {
       var userInfo = [String : Any]()
       moreUserInfo.forEach { userInfo[$0.0] = $0.1 }
