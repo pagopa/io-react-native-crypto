@@ -359,8 +359,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       when (key) {
         is ECPublicKey -> {
           val ecKey = key.w
-          val x = ecKey.affineX.toByteArray().toBase64UrlUIntBytes()
-          val y = ecKey.affineY.toByteArray().toBase64UrlUIntBytes()
+          val x = ecKey.affineX.toByteArray().toEcBase64Url()
+          val y = ecKey.affineY.toByteArray().toEcBase64Url()
 
           nativeMap.putString("kty", "EC")
           nativeMap.putString("crv", "P-256")
@@ -368,8 +368,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
           nativeMap.putString("y", y)
         }
         is RSAPublicKey -> {
-          val n = key.modulus.toByteArray().toBase64UrlUIntBytes()
-          val e = key.publicExponent.toByteArray().toBase64UrlUIntBytes()
+          val n = key.modulus.toByteArray().toRsaBase64Url()
+          val e = key.publicExponent.toByteArray().toRsaBase64Url()
 
           nativeMap.putString("kty", "RSA")
           nativeMap.putString("alg", "RS256")
@@ -701,12 +701,36 @@ fun ByteArray.base64NoWrap(): String {
 /**
  * Encodes the byte array as a base64url string without padding,
  * removing the leading 0x00 byte if present (to ensure unsigned integer representation).
+ * throws `IllegalArgumentException` if the resulting length is not exactly 32 bytes (P-256 requirement).
  */
-fun ByteArray.toBase64UrlUIntBytes(): String {
-  val sanitized = if (this.isNotEmpty() && this[0].toInt() == 0) {
-    this.copyOfRange(1, this.size)
+private fun ByteArray.toEcBase64Url(): String {
+  val unsigned = if (isNotEmpty() && this[0].toInt() == 0) {
+    copyOfRange(1, size)
   } else this
-  return Base64.encodeToString(sanitized, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+
+  require(unsigned.size == 32) {
+    "Invalid EC coordinate length: ${unsigned.size} bytes (expected 32)"
+  }
+
+  return Base64.encodeToString(
+    unsigned,
+    Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
+  )
+}
+
+/**
+ * Encodes the byte array as a base64url string without padding,
+ * removing the leading 0x00 byte if present (to ensure unsigned integer representation).
+ */
+private fun ByteArray.toRsaBase64Url(): String {
+  val unsigned = if (isNotEmpty() && this[0].toInt() == 0) {
+    copyOfRange(1, size)
+  } else this
+
+  return Base64.encodeToString(
+    unsigned,
+    Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
+  )
 }
 
 class KeyNotHardwareBacked(message: String?) : Exception(message)
