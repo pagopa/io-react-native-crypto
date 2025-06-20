@@ -699,15 +699,18 @@ fun ByteArray.base64NoWrap(): String {
 }
 
 /**
+ * Returns the byte array without a leading 0x00 sign-byte
+ */
+private fun ByteArray.toUnsigned(): ByteArray =
+  if (isNotEmpty() && this[0].toInt() == 0) copyOfRange(1, size) else this
+
+/**
  * Encodes the byte array as a base64url string without padding,
  * removing the leading 0x00 byte if present (to ensure unsigned integer representation).
  * throws `IllegalArgumentException` if the resulting length is not exactly 32 bytes (P-256 requirement).
  */
 private fun ByteArray.toEcBase64Url(): String {
-  val unsigned = if (isNotEmpty() && this[0].toInt() == 0) {
-    copyOfRange(1, size)
-  } else this
-
+  val unsigned = toUnsigned()
   require(unsigned.size == 32) {
     "Invalid EC coordinate length: ${unsigned.size} bytes (expected 32)"
   }
@@ -722,15 +725,10 @@ private fun ByteArray.toEcBase64Url(): String {
  * Encodes the byte array as a base64url string without padding,
  * removing the leading 0x00 byte if present (to ensure unsigned integer representation).
  */
-private fun ByteArray.toRsaBase64Url(): String {
-  val unsigned = if (isNotEmpty() && this[0].toInt() == 0) {
-    copyOfRange(1, size)
-  } else this
-
-  return Base64.encodeToString(
-    unsigned,
+private fun ByteArray.toRsaBase64Url(): String =
+  Base64.encodeToString(
+    toUnsigned(),
     Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
   )
-}
 
 class KeyNotHardwareBacked(message: String?) : Exception(message)
