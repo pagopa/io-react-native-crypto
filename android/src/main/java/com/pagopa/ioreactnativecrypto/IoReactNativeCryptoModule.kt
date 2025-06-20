@@ -12,13 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.io.ByteArrayInputStream
 import java.security.*
-import java.security.cert.CertPathValidator
-import java.security.cert.CertificateFactory
-import java.security.cert.PKIXParameters
-import java.security.cert.TrustAnchor
-import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
@@ -324,6 +318,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     return true
   }
 
+  /**
+   * Returns the public key in JWK format.
+   * Legacy method:
+   * - Encodes parameters (x, y, n, e) using standard Base64 (not URL-safe)
+   * - May include padding (`=`) and a leading zero byte if present
+   * For a strict JWK-compliant representation, use `getPublicKeyFixed` instead.
+   */
   @ReactMethod
   fun getPublicKey(keyTag: String, promise: Promise) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -337,6 +338,51 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       return ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
     }
   }
+
+  /**
+   * Returns the public key in strict JWK-compliant format.
+   * - Encodes using Base64URL (RFC 7515): no padding, URL-safe alphabet
+   * - Removes leading zero byte added by BigInteger.toByteArray()
+   * Supports both EC (P-256) and RSA (RS256) keys.
+   */
+  @ReactMethod
+  fun getPublicKeyFixed(keyTag: String, promise: Promise) {
+    getKeyPair(keyTag)?.let {
+      val key = it.public
+      val nativeMap = WritableNativeMap()
+
+      when (key) {
+        is ECPublicKey -> {
+          val ecKey = key.w
+          val x = ecKey.affineX.toByteArray().toEcBase64Url()
+          val y = ecKey.affineY.toByteArray().toEcBase64Url()
+
+          nativeMap.putString("kty", "EC")
+          nativeMap.putString("crv", "P-256")
+          nativeMap.putString("x", x)
+          nativeMap.putString("y", y)
+        }
+        is RSAPublicKey -> {
+          val n = key.modulus.toByteArray().toRsaBase64Url()
+          val e = key.publicExponent.toByteArray().toRsaBase64Url()
+
+          nativeMap.putString("kty", "RSA")
+          nativeMap.putString("alg", "RS256")
+          nativeMap.putString("n", n)
+          nativeMap.putString("e", e)
+        }
+        else -> {
+          ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+          return
+        }
+      }
+      promise.resolve(nativeMap)
+      return
+    }
+
+    ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise, Pair("keyTag", keyTag))
+  }
+
 
   @ReactMethod
   fun isKeyStrongboxBacked(keyTag: String, promise: Promise) {
@@ -646,5 +692,46 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
 fun ByteArray.base64NoWrap(): String {
   return Base64.encodeToString(this, Base64.NO_WRAP)
 }
+
+/**
+ * Returns the byte array without a leading 0x00 sign byte.
+ * This ensures the value is interpreted as an unsigned integer,
+ * which is necessary for JWK compliance.
+ */
+private fun ByteArray.toUnsigned(): ByteArray =
+  if (isNotEmpty() && this[0].toInt() == 0) copyOfRange(1, size) else this
+
+/**
+ * Encodes the byte array as a base64url string without padding.
+ * Ensures the value is treated as an unsigned integer by removing any leading 0x00 sign byte.
+ * This is suitable for JWK fields like `x`, `y`, `n`, and `e`.
+ */
+private fun ByteArray.toBase64UrlUnsigned(): String =
+  Base64.encodeToString(
+    this.toUnsigned(),
+    Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
+  )
+
+/**
+ * Encodes the byte array as a base64url string without padding,
+ * ensuring the result is exactly 32 bytes long as required for P-256 EC keys.
+ * Throws `IllegalArgumentException` if the resulting unsigned value is not 32 bytes.
+ */
+private fun ByteArray.toEcBase64Url(): String {
+  val unsigned = toUnsigned()
+  require(unsigned.size == 32) {
+    "Invalid EC coordinate length: ${unsigned.size} bytes (expected 32)"
+  }
+  return unsigned.toBase64UrlUnsigned()
+}
+
+/**
+ * Encodes the byte array as a base64url string without padding.
+ * Applies standard unsigned encoding (removes leading 0x00 if present).
+ * Suitable for RSA modulus (`n`) and exponent (`e`).
+ */
+private fun ByteArray.toRsaBase64Url(): String =
+  this.toBase64UrlUnsigned()
+
 
 class KeyNotHardwareBacked(message: String?) : Exception(message)
