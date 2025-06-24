@@ -514,7 +514,7 @@ class X509VerificationUtils {
     let issuerCert: SecCertificate? =
       SecTrustGetCertificateCount(trust) > 1
       ? SecTrustGetCertificateAtIndex(trust, 1)
-      : nil
+      : SecTrustGetCertificateAtIndex(trust, 0)
     let issuerDER: Data? = issuerCert.map { SecCertificateCopyData($0) as Data }
 
     X509RevocationChecker.isCertRevokedByCRL(
