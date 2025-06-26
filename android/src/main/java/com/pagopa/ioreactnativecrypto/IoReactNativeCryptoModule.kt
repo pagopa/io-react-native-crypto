@@ -527,11 +527,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     moduleScope.launch { // Launch in module's coroutine scope
       try {
         // 1. Convert ReadableArray to List<String> safely
-        val chainList: List<String> = mutableListOf<String>().apply {
-          for (i in 0 until certChainBase64.size()) {
-            add(certChainBase64.getString(i))
-          }
-        }
+        val chainList: List<String> = (0 until certChainBase64.size())
+          .mapNotNull { certChainBase64.getString(it) }
 
         if (chainList.isEmpty()) {
           throw IllegalArgumentException("Certificate chain array is empty.")
