@@ -357,8 +357,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         when (key) {
           is ECPublicKey -> {
             val ecKey = key.w
-            val x = ecKey.affineX.toUnsignedBase64Url32()
-            val y = ecKey.affineY.toUnsignedBase64Url32()
+            val x = BigIntegers.asUnsignedByteArray(32, ecKey.affineX).toBase64Url()
+            val y = BigIntegers.asUnsignedByteArray(32, ecKey.affineY).toBase64Url()
 
             nativeMap.putString("kty", "EC")
             nativeMap.putString("crv", "P-256")
@@ -367,13 +367,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
           }
 
           is RSAPublicKey -> {
-            val n = BigIntegers.asUnsignedByteArray(key.modulus)
-            val e = BigIntegers.asUnsignedByteArray(key.publicExponent)
+            val n = BigIntegers.asUnsignedByteArray(key.modulus).toBase64Url()
+            val e = BigIntegers.asUnsignedByteArray(key.publicExponent).toBase64Url()
 
             nativeMap.putString("kty", "RSA")
             nativeMap.putString("alg", "RS256")
-            nativeMap.putString("n", n.toBase64Url())
-            nativeMap.putString("e", e.toBase64Url())
+            nativeMap.putString("n", n)
+            nativeMap.putString("e", e)
           }
 
           else -> {
@@ -708,16 +708,6 @@ fun ByteArray.base64NoWrap(): String {
  */
 fun ByteArray.toBase64Url(): String {
   return Base64.encodeToString(this, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-}
-
-/**
- * Converts the BigInteger into a 32-byte unsigned byte array,
- * then encodes it as a Base64 URL-safe string without padding or wrapping.
- * Ensures fixed-length encoding, useful for EC key coordinates (e.g., x and y).
- */
-private fun BigInteger.toUnsignedBase64Url32(): String {
-  val bytes = BigIntegers.asUnsignedByteArray(32, this)
-  return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 }
 
 
