@@ -18,6 +18,8 @@ import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
+import org.bouncycastle.util.BigIntegers
+import java.math.BigInteger
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -348,41 +350,47 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   @ReactMethod
   fun getPublicKeyFixed(keyTag: String, promise: Promise) {
     getKeyPair(keyTag)?.let {
-      val key = it.public
-      val nativeMap = WritableNativeMap()
+      try {
+        val key = it.public
+        val nativeMap = WritableNativeMap()
 
-      when (key) {
-        is ECPublicKey -> {
-          val ecKey = key.w
-          val x = ecKey.affineX.toByteArray().toEcBase64Url()
-          val y = ecKey.affineY.toByteArray().toEcBase64Url()
+        when (key) {
+          is ECPublicKey -> {
+            val ecKey = key.w
+            val x = ecKey.affineX.toUnsignedBase64Url32()
+            val y = ecKey.affineY.toUnsignedBase64Url32()
 
-          nativeMap.putString("kty", "EC")
-          nativeMap.putString("crv", "P-256")
-          nativeMap.putString("x", x)
-          nativeMap.putString("y", y)
-        }
-        is RSAPublicKey -> {
-          val n = key.modulus.toByteArray().toRsaBase64Url()
-          val e = key.publicExponent.toByteArray().toRsaBase64Url()
+            nativeMap.putString("kty", "EC")
+            nativeMap.putString("crv", "P-256")
+            nativeMap.putString("x", x)
+            nativeMap.putString("y", y)
+          }
 
-          nativeMap.putString("kty", "RSA")
-          nativeMap.putString("alg", "RS256")
-          nativeMap.putString("n", n)
-          nativeMap.putString("e", e)
+          is RSAPublicKey -> {
+            val n = BigIntegers.asUnsignedByteArray(key.modulus)
+            val e = BigIntegers.asUnsignedByteArray(key.publicExponent)
+
+            nativeMap.putString("kty", "RSA")
+            nativeMap.putString("alg", "RS256")
+            nativeMap.putString("n", n.toBase64Url())
+            nativeMap.putString("e", e.toBase64Url())
+          }
+
+          else -> {
+            ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
+            return
+          }
         }
-        else -> {
-          ModuleException.WRONG_KEY_CONFIGURATION.reject(promise)
-          return
-        }
+
+        promise.resolve(nativeMap)
+      } catch (e: Exception) {
+        ModuleException.UNKNOWN_EXCEPTION.reject(promise)
       }
-      promise.resolve(nativeMap)
       return
     }
 
     ModuleException.PUBLIC_KEY_NOT_FOUND.reject(promise, Pair("keyTag", keyTag))
   }
-
 
   @ReactMethod
   fun isKeyStrongboxBacked(keyTag: String, promise: Promise) {
@@ -686,49 +694,31 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   }
 }
 
+/**
+ * Encodes the byte array into a Base64 string without line wrapping.
+ * Uses standard Base64 (not URL-safe).
+ */
 fun ByteArray.base64NoWrap(): String {
   return Base64.encodeToString(this, Base64.NO_WRAP)
 }
 
 /**
- * Returns the byte array without a leading 0x00 sign byte.
- * This ensures the value is interpreted as an unsigned integer,
- * which is necessary for JWK compliance.
+ * Encodes the byte array into a Base64 URL-safe string without padding or line wrapping.
+ * Suitable for use in JWTs, JWKs, and other URL-safe contexts.
  */
-private fun ByteArray.toUnsigned(): ByteArray =
-  if (isNotEmpty() && this[0].toInt() == 0) copyOfRange(1, size) else this
-
-/**
- * Encodes the byte array as a base64url string without padding.
- * Ensures the value is treated as an unsigned integer by removing any leading 0x00 sign byte.
- * This is suitable for JWK fields like `x`, `y`, `n`, and `e`.
- */
-private fun ByteArray.toBase64UrlUnsigned(): String =
-  Base64.encodeToString(
-    this.toUnsigned(),
-    Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
-  )
-
-/**
- * Encodes the byte array as a base64url string without padding,
- * ensuring the result is exactly 32 bytes long as required for P-256 EC keys.
- * Throws `IllegalArgumentException` if the resulting unsigned value is not 32 bytes.
- */
-private fun ByteArray.toEcBase64Url(): String {
-  val unsigned = toUnsigned()
-  require(unsigned.size == 32) {
-    "Invalid EC coordinate length: ${unsigned.size} bytes (expected 32)"
-  }
-  return unsigned.toBase64UrlUnsigned()
+fun ByteArray.toBase64Url(): String {
+  return Base64.encodeToString(this, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 }
 
 /**
- * Encodes the byte array as a base64url string without padding.
- * Applies standard unsigned encoding (removes leading 0x00 if present).
- * Suitable for RSA modulus (`n`) and exponent (`e`).
+ * Converts the BigInteger into a 32-byte unsigned byte array,
+ * then encodes it as a Base64 URL-safe string without padding or wrapping.
+ * Ensures fixed-length encoding, useful for EC key coordinates (e.g., x and y).
  */
-private fun ByteArray.toRsaBase64Url(): String =
-  this.toBase64UrlUnsigned()
+private fun BigInteger.toUnsignedBase64Url32(): String {
+  val bytes = BigIntegers.asUnsignedByteArray(32, this)
+  return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+}
 
 
 class KeyNotHardwareBacked(message: String?) : Exception(message)
