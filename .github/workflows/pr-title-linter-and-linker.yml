@@ -79,5 +79,5 @@ jobs:
       - name: Failure message
         if: env.VALIDATION_RESULT != 'success'
         run: |
-          echo "Pull request title (${{ env.COMMENT_TITLE }}) is not properly formatted or it is not related to any Jira issue"
+          echo "Pull request title (${{ env.TITLE }}) is not properly formatted or it is not related to any Jira issue"
           exit 1
