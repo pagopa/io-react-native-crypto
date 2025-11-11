@@ -180,26 +180,33 @@ object X509VerificationUtils {
     var crls: List<X509CRL> = emptyList()
     // This flag determines if PKIXParameters.isRevocationEnabled is set to true.
     // It will be true if CDPs are present, or if CRLs are mandatory (implying CDPs must be present).
-    val performRevocationCheck: Boolean
+    var performRevocationCheck: Boolean
 
     if (anyCertHasCdp) {
       try {
         crls = fetchCrlsForChain(certificateFactory, certificateChain, trustAnchorCert, options)
-        performRevocationCheck = true
+        performRevocationCheck = crls.isNotEmpty()
 
         // If CRLs are mandatory, we must have successfully fetched at least one.
-        if (options.requireCrl && crls.isEmpty()) {
+        if (options.requireCrl && !performRevocationCheck) {
           return ValidationResult(false, ValidationStatus.CRL_FETCH_FAILED, "Mandatory CRL check: No valid CRLs could be obtained despite presence of CRL Distribution Points.")
         }
       } catch (e: CrlFetchException) {
         // This explicit catch handles failures from CRL fetching logic.
         // If CRLs are mandatory OR if they are not but fetching still failed, it's an error.
-        val messagePrefix = if (options.requireCrl) "Mandatory CRL check failed: " else "CRL fetch failed: "
-        return ValidationResult(false, e.status, "$messagePrefix${e.message} (Reported Status: ${e.status})")
+        if (options.requireCrl) {
+          return ValidationResult(false, e.status, "Mandatory CRL check failed: ${e.message}")
+        } else {
+          performRevocationCheck = false
+          crls = emptyList()
+        }
       } catch (e: Exception) {
-        // Catch other unexpected exceptions during CRL fetching.
-        val messagePrefix = if (options.requireCrl) "Mandatory CRL check failed: " else "CRL fetch failed: "
-        return ValidationResult(false, ValidationStatus.CRL_FETCH_FAILED, "${messagePrefix}Unexpected error fetching CRLs: ${e.message}")
+        if (options.requireCrl) {
+          return ValidationResult(false, ValidationStatus.CRL_FETCH_FAILED, "Mandatory CRL check failed: ${e.message}")
+        } else {
+          performRevocationCheck = false
+          crls = emptyList()
+        }
       }
     } else { // No CDPs found in the certificate chain
       if (options.requireCrl) {
@@ -218,7 +225,7 @@ object X509VerificationUtils {
       val pkixParams = PKIXBuilderParameters(setOf(trustAnchor), X509CertSelector())
 
       // *** Conditionally enable revocation checking ***
-      pkixParams.isRevocationEnabled = performRevocationCheck
+      pkixParams.isRevocationEnabled = performRevocationCheck && crls.isNotEmpty()
 
       if (performRevocationCheck && crls.isNotEmpty()) {
         val certStore = CertStore.getInstance("Collection", CollectionCertStoreParameters(crls))

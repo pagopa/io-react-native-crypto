@@ -17,7 +17,7 @@ import {
   sign, verifyCertificateChain,
 } from '@pagopa/io-react-native-crypto';
 import {
-  mockCertificateChainReal,
+  mockCertificateChainReal, mockCertNoCrl,
 } from './mocks/certifaces.mock';
 
 export default function App() {
@@ -137,12 +137,30 @@ export default function App() {
               }}
             />
             <Button
-              title="verifyCertificates"
+              title="verifyCertificatesWithCRL"
               onPress={() => {
                 verifyCertificateChain(mockCertificateChainReal.x5c, mockCertificateChainReal.trustAnchorCert, {
                   connectTimeout: 10000,
                   readTimeout: 10000,
                   requireCrl: true
+                })
+                  .then((result) => {
+                    console.log(result);
+                    setLogText(JSON.stringify(result));
+                  })
+                  .catch((reason: CryptoError) => {
+                    console.log(reason);
+                    setLogText(`${reason}`);
+                  })
+              }}
+            />
+            <Button
+              title="verifyCertificatesNoCRL"
+              onPress={() => {
+                verifyCertificateChain(mockCertNoCrl.x5c, mockCertNoCrl.trustAnchorCert, {
+                  connectTimeout: 10000,
+                  readTimeout: 10000,
+                  requireCrl: false
                 })
                   .then((result) => {
                     console.log(result);
