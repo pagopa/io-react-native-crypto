@@ -198,7 +198,6 @@ object X509VerificationUtils {
           return ValidationResult(false, e.status, "Mandatory CRL check failed: ${e.message}")
         } else {
           performRevocationCheck = false
-          crls = emptyList()
         }
       } catch (e: Exception) {
         if (options.requireCrl) {
