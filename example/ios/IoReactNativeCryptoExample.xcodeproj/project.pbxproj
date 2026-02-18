@@ -7,14 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		00E356F31AD99517003FC87E /* IoReactNativeCryptoExampleTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* IoReactNativeCryptoExampleTests.m */; };
-		13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.mm */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
 		23E65CA81C1683E9EA07DE8F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FF3769DBE65DA9E6A257FF38 /* PrivacyInfo.xcprivacy */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		8649B3791036DB0F14ACC391 /* libPods-IoReactNativeCryptoExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E9176CF553A6F9FC97C20FEF /* libPods-IoReactNativeCryptoExample.a */; };
-		875F021A7B32E099F2C2FD54 /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F322A44F498F5F81EAE2F5C3 /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a */; };
+		A1D764962F461BC600248B3B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D764952F461BC600248B3B /* AppDelegate.swift */; };
+		BEBC83A0672BD8A5F5FACDDC /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F322A44F498F5F81EAE2F5C3 /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,20 +26,15 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		00E356EE1AD99517003FC87E /* IoReactNativeCryptoExampleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IoReactNativeCryptoExampleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		00E356F11AD99517003FC87E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		00E356F21AD99517003FC87E /* IoReactNativeCryptoExampleTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = IoReactNativeCryptoExampleTests.m; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* IoReactNativeCryptoExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IoReactNativeCryptoExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FAF1A68108700A75B9A /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppDelegate.h; path = IoReactNativeCryptoExample/AppDelegate.h; sourceTree = "<group>"; };
-		13B07FB01A68108700A75B9A /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = IoReactNativeCryptoExample/AppDelegate.mm; sourceTree = "<group>"; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = IoReactNativeCryptoExample/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = IoReactNativeCryptoExample/Info.plist; sourceTree = "<group>"; };
-		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = IoReactNativeCryptoExample/main.m; sourceTree = "<group>"; };
 		1F487BF4727D01A5BCE8B37B /* Pods-IoReactNativeCryptoExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IoReactNativeCryptoExample.release.xcconfig"; path = "Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample.release.xcconfig"; sourceTree = "<group>"; };
 		2EE70CBEA837AA4AB010D654 /* Pods-IoReactNativeCryptoExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IoReactNativeCryptoExample.debug.xcconfig"; path = "Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample.debug.xcconfig"; sourceTree = "<group>"; };
-		48F8AFA3934F14C11DD33EE0 /* Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.release.xcconfig"; path = "Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.release.xcconfig"; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = IoReactNativeCryptoExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		9ED85591D6261CBF5D36EE62 /* Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.debug.xcconfig"; path = "Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.debug.xcconfig"; sourceTree = "<group>"; };
+		A1D764952F461BC600248B3B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A1D764972F461BCD00248B3B /* IoReactNativeCryptoExample-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "IoReactNativeCryptoExample-Bridging-Header.h"; sourceTree = "<group>"; };
 		E9176CF553A6F9FC97C20FEF /* libPods-IoReactNativeCryptoExample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-IoReactNativeCryptoExample.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F322A44F498F5F81EAE2F5C3 /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -53,7 +46,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				875F021A7B32E099F2C2FD54 /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a in Frameworks */,
+				BEBC83A0672BD8A5F5FACDDC /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -68,33 +61,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		00E356EF1AD99517003FC87E /* IoReactNativeCryptoExampleTests */ = {
-			isa = PBXGroup;
-			children = (
-				00E356F21AD99517003FC87E /* IoReactNativeCryptoExampleTests.m */,
-				00E356F01AD99517003FC87E /* Supporting Files */,
-			);
-			path = IoReactNativeCryptoExampleTests;
-			sourceTree = "<group>";
-		};
-		00E356F01AD99517003FC87E /* Supporting Files */ = {
-			isa = PBXGroup;
-			children = (
-				00E356F11AD99517003FC87E /* Info.plist */,
-			);
-			name = "Supporting Files";
-			sourceTree = "<group>";
-		};
 		13B07FAE1A68108700A75B9A /* IoReactNativeCryptoExample */ = {
 			isa = PBXGroup;
 			children = (
-				13B07FAF1A68108700A75B9A /* AppDelegate.h */,
-				13B07FB01A68108700A75B9A /* AppDelegate.mm */,
+				A1D764952F461BC600248B3B /* AppDelegate.swift */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
-				13B07FB71A68108700A75B9A /* main.m */,
 				FF3769DBE65DA9E6A257FF38 /* PrivacyInfo.xcprivacy */,
+				A1D764972F461BCD00248B3B /* IoReactNativeCryptoExample-Bridging-Header.h */,
 			);
 			name = IoReactNativeCryptoExample;
 			sourceTree = "<group>";
@@ -121,7 +96,6 @@
 			children = (
 				13B07FAE1A68108700A75B9A /* IoReactNativeCryptoExample */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
-				00E356EF1AD99517003FC87E /* IoReactNativeCryptoExampleTests */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
@@ -210,7 +184,7 @@
 						TestTargetID = 13B07F861A680F5B00A75B9A;
 					};
 					13B07F861A680F5B00A75B9A = {
-						LastSwiftMigration = 1120;
+						LastSwiftMigration = 2620;
 					};
 				};
 			};
@@ -322,9 +296,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -339,9 +317,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -356,9 +338,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -392,9 +378,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -408,7 +398,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				00E356F31AD99517003FC87E /* IoReactNativeCryptoExampleTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -416,8 +405,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
-				13B07FC11A68108700A75B9A /* main.m in Sources */,
+				A1D764962F461BC600248B3B /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -490,6 +478,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M2X5YQ4BJ7;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = IoReactNativeCryptoExample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -503,6 +492,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = IoReactNativeCryptoExample;
+				SWIFT_OBJC_BRIDGING_HEADER = "IoReactNativeCryptoExample-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
@@ -529,6 +519,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = IoReactNativeCryptoExample;
+				SWIFT_OBJC_BRIDGING_HEADER = "IoReactNativeCryptoExample-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
