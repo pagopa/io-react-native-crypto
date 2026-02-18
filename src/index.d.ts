@@ -1,4 +1,4 @@
-declare module 'io-react-native-crypto' {
+declare module "io-react-native-crypto" {
   /**
    * This function generates a key pair and returns the public key
    * in its JWK format if succesfull.
@@ -74,31 +74,31 @@ declare module 'io-react-native-crypto' {
    * Error codes returned by the iOS module.
    */
   type CryptoErrorCodesIOS =
-    | 'KEY_ALREADY_EXISTS'
-    | 'UNSUPPORTED_DEVICE'
-    | 'WRONG_KEY_CONFIGURATION'
-    | 'PUBLIC_KEY_NOT_FOUND'
-    | 'PUBLIC_KEY_DELETION_ERROR'
-    | 'KEYCHAIN_LOAD_FAILED'
-    | 'INVALID_UTF8_ENCODING'
-    | 'UNABLE_TO_SIGN'
-    | 'THREADING_ERROR';
+    | "KEY_ALREADY_EXISTS"
+    | "UNSUPPORTED_DEVICE"
+    | "WRONG_KEY_CONFIGURATION"
+    | "PUBLIC_KEY_NOT_FOUND"
+    | "PUBLIC_KEY_DELETION_ERROR"
+    | "KEYCHAIN_LOAD_FAILED"
+    | "INVALID_UTF8_ENCODING"
+    | "UNABLE_TO_SIGN"
+    | "THREADING_ERROR";
 
   /**
    * Error codes returned by the Android module.
    */
   type CryptoErrorCodesAndroid =
-    | 'KEY_ALREADY_EXISTS'
-    | 'UNSUPPORTED_DEVICE'
-    | 'WRONG_KEY_CONFIGURATION'
-    | 'PUBLIC_KEY_NOT_FOUND'
-    | 'PUBLIC_KEY_DELETION_ERROR'
-    | 'API_LEVEL_NOT_SUPPORTED'
-    | 'KEYSTORE_LOAD_FAILED'
-    | 'UNABLE_TO_SIGN'
-    | 'INVALID_UTF8_ENCODING'
-    | 'INVALID_SIGN_ALGORITHM'
-    | 'UNKNOWN_EXCEPTION';
+    | "KEY_ALREADY_EXISTS"
+    | "UNSUPPORTED_DEVICE"
+    | "WRONG_KEY_CONFIGURATION"
+    | "PUBLIC_KEY_NOT_FOUND"
+    | "PUBLIC_KEY_DELETION_ERROR"
+    | "API_LEVEL_NOT_SUPPORTED"
+    | "KEYSTORE_LOAD_FAILED"
+    | "UNABLE_TO_SIGN"
+    | "INVALID_UTF8_ENCODING"
+    | "INVALID_SIGN_ALGORITHM"
+    | "UNKNOWN_EXCEPTION";
 
   /**
    * All error codes that the module could return.
@@ -120,7 +120,7 @@ declare module 'io-react-native-crypto' {
    * This is the JWK JSON type for the EC keys.
    */
   export type ECKey = {
-    kty: 'EC';
+    kty: "EC";
     crv: string;
     x: string;
     y: string;
@@ -130,7 +130,7 @@ declare module 'io-react-native-crypto' {
    * This is the JWK JSON type for the RSA keys.
    */
   export type RSAKey = {
-    kty: 'RSA';
+    kty: "RSA";
     alg: string;
     e: string;
     n: string;
