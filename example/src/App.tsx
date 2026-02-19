@@ -172,7 +172,9 @@ export default function App() {
             title="generateRandomBytes(32)"
             onPress={() =>
               generateRandomBytes(32)
-                .then((bytes) => log(`generateRandomBytes(32):\n${toHex(bytes)}`))
+                .then((bytes) =>
+                  log(`generateRandomBytes(32):\n${toHex(bytes)}`)
+                )
                 .catch(logError)
             }
           />
