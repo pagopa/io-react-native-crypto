@@ -379,7 +379,14 @@ class IoReactNativeCrypto: NSObject {
       do {
         resolve(try SoftCryptoUtils.hashBytes(hexData, algorithm: algorithm))
       } catch let e as SoftCryptoUtils.SoftCryptoError {
-        ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        switch e {
+        case .unsupportedAlgorithm:
+          ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        case .invalidInput:
+          ME.hashError.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        default:
+          ME.hashError.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        }
       } catch {
         ME.hashError.reject(reject: reject, ("error", error.localizedDescription))
       }
