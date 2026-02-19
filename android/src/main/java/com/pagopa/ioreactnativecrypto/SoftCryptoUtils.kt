@@ -1,14 +1,23 @@
 package com.pagopa.ioreactnativecrypto
 
 import java.security.MessageDigest
+import java.security.SecureRandom
 
 /**
- * Hashing utilities used by the React Native bridge.
+ * Soft-crypto utilities used by the React Native bridge.
  *
- * Both functions return a lowercase hex string so the bridge methods
+ * All functions return a lowercase hex string so the bridge methods
  * are simple delegate calls with no encoding logic.
  */
 internal object SoftCryptoUtils {
+
+  /** Returns [size] cryptographically-secure random bytes as a lowercase hex string. */
+  fun randomBytes(size: Int): String {
+    require(size > 0) { "size must be positive" }
+    val bytes = ByteArray(size)
+    SecureRandom().nextBytes(bytes)
+    return bytes.joinToString("") { "%02x".format(it) }
+  }
 
   /** Hashes the UTF-8 bytes of [data] with [algorithm]. */
   fun hashString(data: String, algorithm: String): String =

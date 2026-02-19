@@ -13,13 +13,28 @@ enum SoftCryptoUtils {
   enum SoftCryptoError: LocalizedError {
     case unsupportedAlgorithm(String)
     case invalidInput(String)
+    case randomBytesError(String)
 
     var errorDescription: String? {
       switch self {
       case .unsupportedAlgorithm(let alg): return "Unsupported hash algorithm: \(alg)"
       case .invalidInput(let msg): return "Invalid input: \(msg)"
+      case .randomBytesError(let msg): return "Random bytes generation failed: \(msg)"
       }
     }
+  }
+
+  /// Returns [size] cryptographically-secure random bytes as a lowercase hex string.
+  static func randomBytes(_ size: Int) throws -> String {
+    guard size > 0 else {
+      throw SoftCryptoError.invalidInput("size must be positive")
+    }
+    var bytes = [UInt8](repeating: 0, count: size)
+    let status = SecRandomCopyBytes(kSecRandomDefault, size, &bytes)
+    guard status == errSecSuccess else {
+      throw SoftCryptoError.randomBytesError("SecRandomCopyBytes failed with status \(status)")
+    }
+    return bytes.map { String(format: "%02x", $0) }.joined()
   }
 
   /// Hashes the UTF-8 bytes of [data] with [algorithm].

@@ -32,6 +32,10 @@ RCT_EXTERN_METHOD(verifyCertificateChain:(NSArray *)certChainBase64
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(randomBytes:(nonnull NSNumber *)size
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(hashString:(NSString *)data
                   withAlgorithm:(NSString *)algorithm
                   withResolver:(RCTPromiseResolveBlock)resolve

@@ -310,6 +310,21 @@ class IoReactNativeCrypto: NSObject {
 
   // ─── Soft-crypto primitives — delegate to SoftCryptoUtils ────────────────
 
+  @objc(randomBytes:withResolver:withRejecter:)
+  func randomBytes(
+    size: NSNumber,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        resolve(try SoftCryptoUtils.randomBytes(size.intValue))
+      } catch {
+        ME.randomBytesError.reject(reject: reject, ("error", error.localizedDescription))
+      }
+    }
+  }
+
   @objc(hashString:withAlgorithm:withResolver:withRejecter:)
   func hashString(
     data: String,
@@ -420,6 +435,7 @@ class IoReactNativeCrypto: NSObject {
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
     case certificatesValidationError = "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+    case randomBytesError = "RANDOM_BYTES_ERROR"
     case hashError = "HASH_ERROR"
     case unsupportedAlgorithm = "UNSUPPORTED_ALGORITHM"
 

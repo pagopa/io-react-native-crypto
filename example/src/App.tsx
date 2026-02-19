@@ -16,6 +16,7 @@ import {
   deleteKey,
   generate,
   digest,
+  generateRandomBytes,
   getPublicKey,
   getPublicKeyFixed,
   isKeyStrongboxBacked,
@@ -164,7 +165,20 @@ export default function App() {
           />
         </View>
 
-        {/* ── Section 3: Hash ── */}
+        {/* ── Section 3: Random bytes ── */}
+        <SectionHeader title="Random Bytes" />
+        <View style={styles.row}>
+          <Btn
+            title="generateRandomBytes(32)"
+            onPress={() =>
+              generateRandomBytes(32)
+                .then((bytes) => log(`generateRandomBytes(32):\n${toHex(bytes)}`))
+                .catch(logError)
+            }
+          />
+        </View>
+
+        {/* ── Section 4: Hash ── */}
         <SectionHeader title="Hash" />
         <View style={styles.row}>
           <Btn

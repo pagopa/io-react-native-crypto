@@ -1,6 +1,7 @@
 package com.pagopa.ioreactnativecrypto
 
 import android.os.Build
+import android.util.Base64
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
@@ -607,7 +608,20 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  // ─── Hashing — delegate to SoftCryptoUtils ───────────────────────────────
+  // ─── Soft-crypto — delegate to SoftCryptoUtils ───────────────────────────
+
+  @ReactMethod
+  fun randomBytes(size: Int, promise: Promise) {
+    moduleScope.launch {
+      try {
+        promise.resolve(SoftCryptoUtils.randomBytes(size))
+      } catch (e: IllegalArgumentException) {
+        ModuleException.RANDOM_BYTES_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      } catch (e: Exception) {
+        ModuleException.RANDOM_BYTES_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      }
+    }
+  }
 
   @ReactMethod
   fun hashString(data: String, algorithm: String, promise: Promise) {
@@ -701,6 +715,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
       CERTIFICATE_CHAIN_VALIDATION_ERROR(Exception("CERTIFICATE_CHAIN_VALIDATION_ERROR")),
+      RANDOM_BYTES_ERROR(Exception("RANDOM_BYTES_ERROR")),
       HASH_ERROR(Exception("HASH_ERROR")),
       UNSUPPORTED_ALGORITHM(Exception("UNSUPPORTED_ALGORITHM")),
       UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));

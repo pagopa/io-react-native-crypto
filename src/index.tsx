@@ -14,6 +14,7 @@ type CryptoErrorCodesIOS =
   | "UNABLE_TO_SIGN"
   | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
   | "THREADING_ERROR"
+  | "RANDOM_BYTES_ERROR"
   | "HASH_ERROR"
   | "UNSUPPORTED_ALGORITHM";
 
@@ -32,6 +33,7 @@ type CryptoErrorCodesAndroid =
   | "INVALID_UTF8_ENCODING"
   | "INVALID_SIGN_ALGORITHM"
   | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+  | "RANDOM_BYTES_ERROR"
   | "HASH_ERROR"
   | "UNSUPPORTED_ALGORITHM"
   | "UNKNOWN_EXCEPTION";
@@ -289,4 +291,12 @@ export function digest(
     b.toString(16).padStart(2, "0")
   ).join("");
   return IoReactNativeCrypto.hashBytes(hex, algorithm).then(hexToUint8Array);
+}
+
+/**
+ * Returns [size] cryptographically-secure random bytes as a Uint8Array.
+ * Uses SecureRandom on Android and SecRandomCopyBytes on iOS.
+ */
+export function generateRandomBytes(size: number): Promise<Uint8Array> {
+  return IoReactNativeCrypto.randomBytes(size).then(hexToUint8Array);
 }
