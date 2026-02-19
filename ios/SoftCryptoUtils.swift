@@ -66,6 +66,14 @@ enum SoftCryptoUtils {
 }
 
 extension Data {
+  /// Encodes data as a Base64URL string (RFC 7515): URL-safe alphabet, no padding.
+  func base64UrlEncodedString() -> String {
+    return base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+  }
+
   /// Decodes a lowercase hex string to Data.
   /// Returns nil if the string has an odd length or non-hex digits.
   init?(hexEncoded hex: String) {
