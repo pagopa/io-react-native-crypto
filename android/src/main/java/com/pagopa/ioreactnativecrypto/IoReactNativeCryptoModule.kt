@@ -4,7 +4,6 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
-import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import kotlinx.coroutines.CoroutineScope
@@ -608,184 +607,30 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  // ─── Soft-crypto primitives — delegate to SoftCryptoUtils ────────────────
+  // ─── Hashing — delegate to SoftCryptoUtils ───────────────────────────────
 
-  @ReactMethod
-  fun generateSalt(length: Int, promise: Promise) {
-    moduleScope.launch {
-      try {
-        promise.resolve(SoftCryptoUtils.generateSalt(length))
-      } catch (e: Exception) {
-        ModuleException.GENERATE_SALT_ERROR.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-      }
-    }
-  }
-
-  /**
-   * Hashes a UTF-8 [data] string using [algorithm] ("sha-256", "sha-384", "sha-512").
-   * Resolves with the hash as a lowercase hex string.
-   */
   @ReactMethod
   fun hashString(data: String, algorithm: String, promise: Promise) {
     moduleScope.launch {
       try {
-        val result = SoftCryptoUtils.hash(data.toByteArray(Charsets.UTF_8), algorithm)
-        promise.resolve(result.joinToString("") { "%02x".format(it) })
+        promise.resolve(SoftCryptoUtils.hashString(data, algorithm))
       } catch (e: IllegalArgumentException) {
-        ModuleException.UNSUPPORTED_ALGORITHM.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
+        ModuleException.UNSUPPORTED_ALGORITHM.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
       } catch (e: Exception) {
-        ModuleException.HASH_ERROR.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
+        ModuleException.HASH_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
       }
     }
   }
 
-  /**
-   * Hashes raw bytes supplied as a lowercase hex string [hexData]
-   * using [algorithm] ("sha-256", "sha-384", "sha-512").
-   * Resolves with the hash as a lowercase hex string.
-   */
   @ReactMethod
   fun hashBytes(hexData: String, algorithm: String, promise: Promise) {
     moduleScope.launch {
       try {
-        val inputBytes = hexData.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        val result = SoftCryptoUtils.hash(inputBytes, algorithm)
-        promise.resolve(result.joinToString("") { "%02x".format(it) })
+        promise.resolve(SoftCryptoUtils.hashBytes(hexData, algorithm))
       } catch (e: IllegalArgumentException) {
-        ModuleException.UNSUPPORTED_ALGORITHM.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
+        ModuleException.UNSUPPORTED_ALGORITHM.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
       } catch (e: Exception) {
-        ModuleException.HASH_ERROR.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-      }
-    }
-  }
-
-  /**
-   * Generates an ephemeral ECDSA key pair for [namedCurve] ("P-256", "P-384", "P-521").
-   * Resolves with { publicKeyJwk: { kty, crv, x, y }, privateKeyJwk: { kty, crv, x, y, d } }.
-   */
-  @ReactMethod
-  fun generateEphemeralKeyPair(namedCurve: String, promise: Promise) {
-    moduleScope.launch {
-      try {
-        val kp = SoftCryptoUtils.generateEphemeralKeyPair(namedCurve)
-
-        val x = kp.publicX.toBase64Url()
-        val y = kp.publicY.toBase64Url()
-        val d = kp.privateD.toBase64Url()
-
-        val publicKeyJwk = Arguments.createMap().apply {
-          putString("kty", "EC")
-          putString("crv", namedCurve)
-          putString("x", x)
-          putString("y", y)
-        }
-        val privateKeyJwk = Arguments.createMap().apply {
-          putString("kty", "EC")
-          putString("crv", namedCurve)
-          putString("x", x)
-          putString("y", y)
-          putString("d", d)
-        }
-
-        promise.resolve(Arguments.createMap().apply {
-          putMap("publicKeyJwk", publicKeyJwk)
-          putMap("privateKeyJwk", privateKeyJwk)
-        })
-      } catch (e: IllegalArgumentException) {
-        ModuleException.UNSUPPORTED_CURVE.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-      } catch (e: Exception) {
-        ModuleException.GENERATE_EPHEMERAL_KEY_PAIR_ERROR.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-      }
-    }
-  }
-
-  /**
-   * Signs [data] (UTF-8) with the private key JWK [privateKeyJwk] (must contain "d").
-   * Resolves with the IEEE P1363 signature (R‖S) as a Base64URL string.
-   */
-  @ReactMethod
-  fun signWithEphemeralKey(
-    data: String,
-    privateKeyJwk: ReadableMap,
-    namedCurve: String,
-    hashAlgorithm: String,
-    promise: Promise
-  ) {
-    moduleScope.launch {
-      try {
-        val dB64 = privateKeyJwk.getString("d")
-          ?: throw IllegalArgumentException("Missing 'd' in private key JWK")
-        val dBytes = Base64.decode(dB64, Base64.URL_SAFE or Base64.NO_PADDING)
-
-        val raw = SoftCryptoUtils.sign(
-          data.toByteArray(Charsets.UTF_8), dBytes, namedCurve, hashAlgorithm
-        )
-        promise.resolve(
-          Base64.encodeToString(raw, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-        )
-      } catch (e: IllegalArgumentException) {
-        ModuleException.UNSUPPORTED_CURVE.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-      } catch (e: Exception) {
-        ModuleException.SIGN_EPHEMERAL_ERROR.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-      }
-    }
-  }
-
-  /**
-   * Verifies a Base64URL IEEE P1363 [signatureBase64url] against [data] (UTF-8)
-   * using the public key JWK [publicKeyJwk] (must contain "x" and "y").
-   * Resolves with true when the signature is valid.
-   */
-  @ReactMethod
-  fun verifyWithEphemeralKey(
-    data: String,
-    signatureBase64url: String,
-    publicKeyJwk: ReadableMap,
-    namedCurve: String,
-    hashAlgorithm: String,
-    promise: Promise
-  ) {
-    moduleScope.launch {
-      try {
-        val xB64 = publicKeyJwk.getString("x")
-          ?: throw IllegalArgumentException("Missing 'x' in public key JWK")
-        val yB64 = publicKeyJwk.getString("y")
-          ?: throw IllegalArgumentException("Missing 'y' in public key JWK")
-        val xBytes = Base64.decode(xB64, Base64.URL_SAFE or Base64.NO_PADDING)
-        val yBytes = Base64.decode(yB64, Base64.URL_SAFE or Base64.NO_PADDING)
-        val rawSig = Base64.decode(signatureBase64url, Base64.URL_SAFE or Base64.NO_PADDING)
-
-        promise.resolve(
-          SoftCryptoUtils.verify(
-            data.toByteArray(Charsets.UTF_8), rawSig, xBytes, yBytes, namedCurve, hashAlgorithm
-          )
-        )
-      } catch (e: IllegalArgumentException) {
-        ModuleException.UNSUPPORTED_CURVE.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
-      } catch (e: Exception) {
-        ModuleException.VERIFY_EPHEMERAL_ERROR.reject(
-          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
-        )
+        ModuleException.HASH_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
       }
     }
   }
@@ -856,13 +701,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
       CERTIFICATE_CHAIN_VALIDATION_ERROR(Exception("CERTIFICATE_CHAIN_VALIDATION_ERROR")),
-      GENERATE_SALT_ERROR(Exception("GENERATE_SALT_ERROR")),
       HASH_ERROR(Exception("HASH_ERROR")),
       UNSUPPORTED_ALGORITHM(Exception("UNSUPPORTED_ALGORITHM")),
-      UNSUPPORTED_CURVE(Exception("UNSUPPORTED_CURVE")),
-      GENERATE_EPHEMERAL_KEY_PAIR_ERROR(Exception("GENERATE_EPHEMERAL_KEY_PAIR_ERROR")),
-      SIGN_EPHEMERAL_ERROR(Exception("SIGN_EPHEMERAL_ERROR")),
-      VERIFY_EPHEMERAL_ERROR(Exception("VERIFY_EPHEMERAL_ERROR")),
       UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
 
       fun reject(

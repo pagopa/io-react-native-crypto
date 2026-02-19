@@ -310,26 +310,6 @@ class IoReactNativeCrypto: NSObject {
 
   // ─── Soft-crypto primitives — delegate to SoftCryptoUtils ────────────────
 
-  @objc(generateSalt:withResolver:withRejecter:)
-  func generateSalt(
-    length: NSNumber,
-    resolve: @escaping RCTPromiseResolveBlock,
-    reject: @escaping RCTPromiseRejectBlock
-  ) {
-    DispatchQueue.global(qos: .userInitiated).async {
-      do {
-        let salt = try SoftCryptoUtils.generateSalt(length.intValue)
-        resolve(salt)
-      } catch {
-        ME.generateSaltError.reject(reject: reject, ("error", error.localizedDescription))
-      }
-    }
-  }
-
-  /**
-   * Hashes a UTF-8 [data] string with [algorithm] ("sha-256", "sha-384", "sha-512").
-   * Resolves with the hash as a lowercase hex string.
-   */
   @objc(hashString:withAlgorithm:withResolver:withRejecter:)
   func hashString(
     data: String,
@@ -339,12 +319,7 @@ class IoReactNativeCrypto: NSObject {
   ) {
     DispatchQueue.global(qos: .userInitiated).async {
       do {
-        guard let inputData = data.data(using: .utf8) else {
-          ME.hashError.reject(reject: reject, ("error", "Invalid UTF-8 input"))
-          return
-        }
-        let result = try SoftCryptoUtils.hash(inputData, algorithm: algorithm)
-        resolve(result.map { String(format: "%02x", $0) }.joined())
+        resolve(try SoftCryptoUtils.hashString(data, algorithm: algorithm))
       } catch let e as SoftCryptoUtils.SoftCryptoError {
         ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
       } catch {
@@ -353,11 +328,6 @@ class IoReactNativeCrypto: NSObject {
     }
   }
 
-  /**
-   * Hashes raw bytes supplied as a lowercase hex string [hexData]
-   * with [algorithm] ("sha-256", "sha-384", "sha-512").
-   * Resolves with the hash as a lowercase hex string.
-   */
   @objc(hashBytes:withAlgorithm:withResolver:withRejecter:)
   func hashBytes(
     hexData: String,
@@ -367,126 +337,11 @@ class IoReactNativeCrypto: NSObject {
   ) {
     DispatchQueue.global(qos: .userInitiated).async {
       do {
-        guard let inputData = Data(hexEncoded: hexData) else {
-          ME.hashError.reject(reject: reject, ("error", "Invalid hex input"))
-          return
-        }
-        let result = try SoftCryptoUtils.hash(inputData, algorithm: algorithm)
-        resolve(result.map { String(format: "%02x", $0) }.joined())
+        resolve(try SoftCryptoUtils.hashBytes(hexData, algorithm: algorithm))
       } catch let e as SoftCryptoUtils.SoftCryptoError {
         ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
       } catch {
         ME.hashError.reject(reject: reject, ("error", error.localizedDescription))
-      }
-    }
-  }
-
-  /**
-   * Generates an ephemeral ECDSA key pair for [namedCurve] ("P-256", "P-384", "P-521").
-   * Resolves with { publicKeyJwk: { kty, crv, x, y }, privateKeyJwk: { kty, crv, x, y, d } }.
-   */
-  @objc(generateEphemeralKeyPair:withResolver:withRejecter:)
-  func generateEphemeralKeyPair(
-    namedCurve: String,
-    resolve: @escaping RCTPromiseResolveBlock,
-    reject: @escaping RCTPromiseRejectBlock
-  ) {
-    DispatchQueue.global(qos: .userInitiated).async {
-      do {
-        let kp = try SoftCryptoUtils.generateEphemeralKeyPair(namedCurve: namedCurve)
-        let x = kp.publicX.base64UrlEncodedString()
-        let y = kp.publicY.base64UrlEncodedString()
-        let d = kp.privateD.base64UrlEncodedString()
-        resolve([
-          "publicKeyJwk":  ["kty": "EC", "crv": namedCurve, "x": x, "y": y],
-          "privateKeyJwk": ["kty": "EC", "crv": namedCurve, "x": x, "y": y, "d": d]
-        ])
-      } catch let e as SoftCryptoUtils.SoftCryptoError {
-        ME.unsupportedCurve.reject(reject: reject, ("error", e.localizedDescription ?? ""))
-      } catch {
-        ME.generateEphemeralKeyPairError.reject(reject: reject, ("error", error.localizedDescription))
-      }
-    }
-  }
-
-  /**
-   * Signs [data] (UTF-8) with the private key JWK (must contain "d").
-   * Resolves with the IEEE P1363 signature (R‖S) as a Base64URL string.
-   */
-  @objc(signWithEphemeralKey:withPrivateKeyJwk:withNamedCurve:withHashAlgorithm:withResolver:withRejecter:)
-  func signWithEphemeralKey(
-    data: String,
-    privateKeyJwk: NSDictionary,
-    namedCurve: String,
-    hashAlgorithm: String,
-    resolve: @escaping RCTPromiseResolveBlock,
-    reject: @escaping RCTPromiseRejectBlock
-  ) {
-    DispatchQueue.global(qos: .userInitiated).async {
-      do {
-        guard let dB64 = privateKeyJwk["d"] as? String,
-              let dBytes = dB64.base64UrlDecodedData() else {
-          ME.signEphemeralError.reject(reject: reject, ("error", "Missing or invalid 'd' in private key JWK"))
-          return
-        }
-        guard let dataBytes = data.data(using: .utf8) else {
-          ME.signEphemeralError.reject(reject: reject, ("error", "Invalid UTF-8 data"))
-          return
-        }
-        let rawSig = try SoftCryptoUtils.sign(
-          dataBytes, privateD: dBytes, namedCurve: namedCurve, hashAlgorithm: hashAlgorithm
-        )
-        resolve(rawSig.base64UrlEncodedString())
-      } catch let e as SoftCryptoUtils.SoftCryptoError {
-        ME.unsupportedCurve.reject(reject: reject, ("error", e.localizedDescription ?? ""))
-      } catch {
-        ME.signEphemeralError.reject(reject: reject, ("error", error.localizedDescription))
-      }
-    }
-  }
-
-  /**
-   * Verifies a Base64URL IEEE P1363 [signatureBase64url] against [data] (UTF-8)
-   * using the public key JWK (must contain "x" and "y").
-   * Resolves with true when the signature is valid.
-   */
-  @objc(verifyWithEphemeralKey:withSignatureBase64url:withPublicKeyJwk:withNamedCurve:withHashAlgorithm:withResolver:withRejecter:)
-  func verifyWithEphemeralKey(
-    data: String,
-    signatureBase64url: String,
-    publicKeyJwk: NSDictionary,
-    namedCurve: String,
-    hashAlgorithm: String,
-    resolve: @escaping RCTPromiseResolveBlock,
-    reject: @escaping RCTPromiseRejectBlock
-  ) {
-    DispatchQueue.global(qos: .userInitiated).async {
-      do {
-        guard let xB64 = publicKeyJwk["x"] as? String,
-              let yB64 = publicKeyJwk["y"] as? String,
-              let xBytes = xB64.base64UrlDecodedData(),
-              let yBytes = yB64.base64UrlDecodedData() else {
-          ME.verifyEphemeralError.reject(reject: reject, ("error", "Missing or invalid 'x'/'y' in public key JWK"))
-          return
-        }
-        guard let dataBytes = data.data(using: .utf8) else {
-          ME.verifyEphemeralError.reject(reject: reject, ("error", "Invalid UTF-8 data"))
-          return
-        }
-        guard let rawSig = signatureBase64url.base64UrlDecodedData() else {
-          ME.verifyEphemeralError.reject(reject: reject, ("error", "Invalid Base64URL signature"))
-          return
-        }
-        let isValid = try SoftCryptoUtils.verify(
-          dataBytes, signature: rawSig,
-          publicX: xBytes, publicY: yBytes,
-          namedCurve: namedCurve, hashAlgorithm: hashAlgorithm
-        )
-        resolve(isValid)
-      } catch let e as SoftCryptoUtils.SoftCryptoError {
-        ME.unsupportedCurve.reject(reject: reject, ("error", e.localizedDescription ?? ""))
-      } catch {
-        ME.verifyEphemeralError.reject(reject: reject, ("error", error.localizedDescription))
       }
     }
   }
@@ -565,13 +420,8 @@ class IoReactNativeCrypto: NSObject {
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
     case certificatesValidationError = "CERTIFICATE_CHAIN_VALIDATION_ERROR"
-    case generateSaltError = "GENERATE_SALT_ERROR"
     case hashError = "HASH_ERROR"
     case unsupportedAlgorithm = "UNSUPPORTED_ALGORITHM"
-    case unsupportedCurve = "UNSUPPORTED_CURVE"
-    case generateEphemeralKeyPairError = "GENERATE_EPHEMERAL_KEY_PAIR_ERROR"
-    case signEphemeralError = "SIGN_EPHEMERAL_ERROR"
-    case verifyEphemeralError = "VERIFY_EPHEMERAL_ERROR"
 
     func error(userInfo: [String : Any]? = nil) -> NSError {
       return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
@@ -586,14 +436,4 @@ class IoReactNativeCrypto: NSObject {
   }
 }
 
-extension Data {
-  /// Converts the data to a base64url string (RFC 7515), without padding
-  /// - Replaces + with -, / with _, and removes trailing =
-  func base64UrlEncodedString() -> String {
-    return self.base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-}
 

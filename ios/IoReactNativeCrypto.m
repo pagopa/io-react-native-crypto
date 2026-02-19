@@ -32,10 +32,6 @@ RCT_EXTERN_METHOD(verifyCertificateChain:(NSArray *)certChainBase64
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
-RCT_EXTERN_METHOD(generateSalt:(nonnull NSNumber *)length
-                  withResolver:(RCTPromiseResolveBlock)resolve
-                  withRejecter:(RCTPromiseRejectBlock)reject)
-
 RCT_EXTERN_METHOD(hashString:(NSString *)data
                   withAlgorithm:(NSString *)algorithm
                   withResolver:(RCTPromiseResolveBlock)resolve
@@ -43,25 +39,6 @@ RCT_EXTERN_METHOD(hashString:(NSString *)data
 
 RCT_EXTERN_METHOD(hashBytes:(NSString *)hexData
                   withAlgorithm:(NSString *)algorithm
-                  withResolver:(RCTPromiseResolveBlock)resolve
-                  withRejecter:(RCTPromiseRejectBlock)reject)
-
-RCT_EXTERN_METHOD(generateEphemeralKeyPair:(NSString *)namedCurve
-                  withResolver:(RCTPromiseResolveBlock)resolve
-                  withRejecter:(RCTPromiseRejectBlock)reject)
-
-RCT_EXTERN_METHOD(signWithEphemeralKey:(NSString *)data
-                  withPrivateKeyJwk:(NSDictionary *)privateKeyJwk
-                  withNamedCurve:(NSString *)namedCurve
-                  withHashAlgorithm:(NSString *)hashAlgorithm
-                  withResolver:(RCTPromiseResolveBlock)resolve
-                  withRejecter:(RCTPromiseRejectBlock)reject)
-
-RCT_EXTERN_METHOD(verifyWithEphemeralKey:(NSString *)data
-                  withSignatureBase64url:(NSString *)signatureBase64url
-                  withPublicKeyJwk:(NSDictionary *)publicKeyJwk
-                  withNamedCurve:(NSString *)namedCurve
-                  withHashAlgorithm:(NSString *)hashAlgorithm
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
