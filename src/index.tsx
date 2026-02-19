@@ -296,11 +296,34 @@ export function digest(
 }
 
 /**
- * Returns [size] cryptographically-secure random bytes as a Uint8Array.
+ * Returns [byteLength] cryptographically-secure random bytes as a Uint8Array.
  * Uses SecureRandom on Android and SecRandomCopyBytes on iOS.
  */
-export function generateRandomBytes(size: number): Promise<Uint8Array> {
-  return IoReactNativeCrypto.randomBytes(size).then(hexToUint8Array);
+export function generateRandomBytes(byteLength: number): Promise<Uint8Array> {
+  return IoReactNativeCrypto.randomBytes(byteLength).then(hexToUint8Array);
+}
+
+/**
+ * Returns [byteLength] cryptographically-secure random bytes as a lowercase
+ * hex string of length byteLength * 2.
+ * Uses SecureRandom on Android and SecRandomCopyBytes on iOS.
+ */
+export function generateRandomHex(byteLength: number): Promise<string> {
+  return IoReactNativeCrypto.randomBytes(byteLength);
+}
+
+const ALPHANUMERIC = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+/**
+ * Returns a cryptographically-secure random alphanumeric string (a-z, 0-9)
+ * of exactly [size] characters.
+ * Uses SecureRandom on Android and SecRandomCopyBytes on iOS.
+ */
+export async function generateRandomString(size: number): Promise<string> {
+  const bytes = await generateRandomBytes(size);
+  return Array.from(bytes, (b) => ALPHANUMERIC[b % ALPHANUMERIC.length]).join(
+    ""
+  );
 }
 
 /**
