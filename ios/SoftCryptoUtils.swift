@@ -24,10 +24,14 @@ enum SoftCryptoUtils {
     }
   }
 
+  private static let maxRandomBytes = 65536
+
   /// Returns [size] cryptographically-secure random bytes as a lowercase hex string.
   static func randomBytes(_ size: Int) throws -> String {
-    guard size > 0 else {
-      throw SoftCryptoError.invalidInput("size must be positive")
+    guard size > 0 && size <= maxRandomBytes else {
+      throw SoftCryptoError.invalidInput(
+        "size must be positive and at most \(maxRandomBytes)"
+      )
     }
     var bytes = [UInt8](repeating: 0, count: size)
     let status = SecRandomCopyBytes(kSecRandomDefault, size, &bytes)

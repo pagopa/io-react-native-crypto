@@ -313,17 +313,31 @@ export function generateRandomHex(byteLength: number): Promise<string> {
 }
 
 const ALPHANUMERIC = "0123456789abcdefghijklmnopqrstuvwxyz";
+// 256 is not evenly divisible by 36, so bytes [252..255] would bias indices
+// [0..3]. Rejecting them gives a perfectly uniform distribution over [0..35].
+const ALPHANUMERIC_THRESHOLD =
+  Math.floor(256 / ALPHANUMERIC.length) * ALPHANUMERIC.length; // 252
 
 /**
  * Returns a cryptographically-secure random alphanumeric string (a-z, 0-9)
  * of exactly [size] characters.
  * Uses SecureRandom on Android and SecRandomCopyBytes on iOS.
+ *
+ * Rejection sampling is used to avoid modulo bias: bytes outside the largest
+ * multiple of 36 that fits in [0, 255] are discarded, so each character has
+ * an exactly equal probability of 1/36.
  */
 export async function generateRandomString(size: number): Promise<string> {
-  const bytes = await generateRandomBytes(size);
-  return Array.from(bytes, (b) => ALPHANUMERIC[b % ALPHANUMERIC.length]).join(
-    ""
-  );
+  const chars: string[] = [];
+  while (chars.length < size) {
+    const bytes = await generateRandomBytes(size - chars.length);
+    for (const b of bytes) {
+      if (b < ALPHANUMERIC_THRESHOLD) {
+        chars.push(ALPHANUMERIC[b % ALPHANUMERIC.length]!);
+      }
+    }
+  }
+  return chars.join("");
 }
 
 /**
