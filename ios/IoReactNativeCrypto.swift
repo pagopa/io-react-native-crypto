@@ -325,6 +325,24 @@ class IoReactNativeCrypto: NSObject {
     }
   }
 
+  @objc(verifyES256:withSignature:withX:withY:withResolver:withRejecter:)
+  func verifyES256(
+    data: String,
+    signatureBase64url: String,
+    x: String,
+    y: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        resolve(try SoftCryptoUtils.verifyES256(data, signatureBase64url: signatureBase64url, x: x, y: y))
+      } catch {
+        ME.verifyError.reject(reject: reject, ("error", error.localizedDescription))
+      }
+    }
+  }
+
   @objc(hashString:withAlgorithm:withResolver:withRejecter:)
   func hashString(
     data: String,
@@ -435,6 +453,7 @@ class IoReactNativeCrypto: NSObject {
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
     case certificatesValidationError = "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+    case verifyError = "VERIFY_ERROR"
     case randomBytesError = "RANDOM_BYTES_ERROR"
     case hashError = "HASH_ERROR"
     case unsupportedAlgorithm = "UNSUPPORTED_ALGORITHM"

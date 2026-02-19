@@ -611,6 +611,23 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   // ─── Soft-crypto — delegate to SoftCryptoUtils ───────────────────────────
 
   @ReactMethod
+  fun verifyES256(
+    data: String,
+    signatureBase64url: String,
+    x: String,
+    y: String,
+    promise: Promise
+  ) {
+    moduleScope.launch {
+      try {
+        promise.resolve(SoftCryptoUtils.verifyES256(data, signatureBase64url, x, y))
+      } catch (e: Exception) {
+        ModuleException.VERIFY_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      }
+    }
+  }
+
+  @ReactMethod
   fun randomBytes(size: Int, promise: Promise) {
     moduleScope.launch {
       try {
@@ -715,6 +732,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
       CERTIFICATE_CHAIN_VALIDATION_ERROR(Exception("CERTIFICATE_CHAIN_VALIDATION_ERROR")),
+      VERIFY_ERROR(Exception("VERIFY_ERROR")),
       RANDOM_BYTES_ERROR(Exception("RANDOM_BYTES_ERROR")),
       HASH_ERROR(Exception("HASH_ERROR")),
       UNSUPPORTED_ALGORITHM(Exception("UNSUPPORTED_ALGORITHM")),

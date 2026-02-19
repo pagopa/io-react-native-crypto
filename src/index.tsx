@@ -14,6 +14,7 @@ type CryptoErrorCodesIOS =
   | "UNABLE_TO_SIGN"
   | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
   | "THREADING_ERROR"
+  | "VERIFY_ERROR"
   | "RANDOM_BYTES_ERROR"
   | "HASH_ERROR"
   | "UNSUPPORTED_ALGORITHM";
@@ -33,6 +34,7 @@ type CryptoErrorCodesAndroid =
   | "INVALID_UTF8_ENCODING"
   | "INVALID_SIGN_ALGORITHM"
   | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+  | "VERIFY_ERROR"
   | "RANDOM_BYTES_ERROR"
   | "HASH_ERROR"
   | "UNSUPPORTED_ALGORITHM"
@@ -300,3 +302,38 @@ export function digest(
 export function generateRandomBytes(size: number): Promise<Uint8Array> {
   return IoReactNativeCrypto.randomBytes(size).then(hexToUint8Array);
 }
+
+/**
+ * Verifies an ES256 (ECDSA P-256 SHA-256) signature.
+ *
+ * [data] is the raw UTF-8 signing input (the JWS signing input string).
+ * [signatureBase64url] is the Base64URL-encoded IEEE P1363 signature (R‖S).
+ * [publicKeyJwk] is the signer's P-256 public key in JWK format.
+ *
+ * Compatible with the `Verifier` type from `@sd-jwt/types`.
+ */
+export function verifyES256(
+  data: string,
+  signatureBase64url: string,
+  publicKeyJwk: { x: string; y: string }
+): Promise<boolean> {
+  return IoReactNativeCrypto.verifyES256(
+    data,
+    signatureBase64url,
+    publicKeyJwk.x,
+    publicKeyJwk.y
+  );
+}
+
+export const ES256 = {
+  alg: "ES256",
+  /**
+   * Returns a `Verifier` function bound to [publicKeyJwk].
+   * The returned function is directly assignable to the `Verifier` type
+   * from `@sd-jwt/types`.
+   */
+  getVerifier:
+    (publicKeyJwk: { x: string; y: string }) =>
+    (data: string, signatureBase64url: string): Promise<boolean> =>
+      verifyES256(data, signatureBase64url, publicKeyJwk),
+};
