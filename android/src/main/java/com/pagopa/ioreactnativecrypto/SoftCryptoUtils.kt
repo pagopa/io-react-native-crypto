@@ -27,7 +27,7 @@ internal object SoftCryptoUtils {
 
   /** Returns [size] cryptographically-secure random bytes as a lowercase hex string. */
   fun randomBytes(size: Int): String {
-    require(size > 0 && size <= MAX_RANDOM_BYTES) {
+    require(size in 1..MAX_RANDOM_BYTES) {
       "size must be positive and at most $MAX_RANDOM_BYTES"
     }
     val bytes = ByteArray(size)
