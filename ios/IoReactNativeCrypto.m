@@ -36,8 +36,12 @@ RCT_EXTERN_METHOD(generateSalt:(nonnull NSNumber *)length
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
-RCT_EXTERN_METHOD(hash:(NSString *)data
-                  withIsBase64Input:(BOOL)isBase64Input
+RCT_EXTERN_METHOD(hashString:(NSString *)data
+                  withAlgorithm:(NSString *)algorithm
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(hashBytes:(NSString *)hexData
                   withAlgorithm:(NSString *)algorithm
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)

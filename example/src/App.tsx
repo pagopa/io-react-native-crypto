@@ -18,6 +18,8 @@ import {
   generate,
   generateSalt,
   digest,
+  hashString,
+  hashBytes,
   getPublicKey,
   getPublicKeyFixed,
   isKeyStrongboxBacked,
@@ -168,20 +170,7 @@ export default function App() {
             title="generateSalt(32)"
             onPress={() =>
               generateSalt(32)
-                .then((v) => log(`salt: ${v}`))
-                .catch(logError)
-            }
-          />
-          <Btn
-            title="digest SHA-256"
-            onPress={() =>
-              digest("Hello, io-react-native-crypto!", "sha-256")
-                .then((bytes) => {
-                  const hex = Array.from(bytes)
-                    .map((b) => b.toString(16).padStart(2, "0"))
-                    .join("");
-                  log(`sha-256: ${hex}`);
-                })
+                .then((v) => log(`salt (32 chars):\n${v}`))
                 .catch(logError)
             }
           />
@@ -197,6 +186,93 @@ export default function App() {
                 const isValid = await verifier(payload, signature);
                 log(
                   `ES256 round-trip\n\npubKey:\n${JSON.stringify(publicKey, null, 2)}\n\nsig: ${signature}\n\nvalid: ${isValid}`
+                );
+              } catch (e) {
+                logError(e);
+              }
+            }}
+          />
+        </View>
+
+        {/* ── Section 4: Hash methods ── */}
+        <SectionHeader title="Hash" />
+        <View style={styles.row}>
+          <Btn
+            title="hashString"
+            onPress={() =>
+              hashString("Hello, world!", "sha-256")
+                .then((hex) => log(`hashString("Hello, world!", "sha-256"):\n${hex}`))
+                .catch(logError)
+            }
+          />
+          <Btn
+            title="hashBytes"
+            onPress={() => {
+              // "Hello, world!" encoded as hex bytes
+              const hex = Array.from(
+                new TextEncoder().encode("Hello, world!"),
+                (b) => b.toString(16).padStart(2, "0")
+              ).join("");
+              return hashBytes(hex, "sha-256")
+                .then((result) =>
+                  log(`hashBytes(hex("Hello, world!"), "sha-256"):\n${result}`)
+                )
+                .catch(logError);
+            }}
+          />
+          <Btn
+            title="digest (string)"
+            onPress={() =>
+              digest("Hello, world!", "sha-256")
+                .then((bytes) => {
+                  const hex = Array.from(bytes, (b) =>
+                    b.toString(16).padStart(2, "0")
+                  ).join("");
+                  log(`digest("Hello, world!", "sha-256"):\n${hex}`);
+                })
+                .catch(logError)
+            }
+          />
+          <Btn
+            title="digest (ArrayBuffer)"
+            onPress={() => {
+              const buf = new TextEncoder().encode("Hello, world!").buffer;
+              return digest(buf, "sha-256")
+                .then((bytes) => {
+                  const hex = Array.from(bytes, (b) =>
+                    b.toString(16).padStart(2, "0")
+                  ).join("");
+                  log(`digest(ArrayBuffer("Hello, world!"), "sha-256"):\n${hex}`);
+                })
+                .catch(logError);
+            }}
+          />
+          <Btn
+            title="All agree?"
+            onPress={async () => {
+              try {
+                const input = "Hello, world!";
+                const alg = "sha-256";
+                const hexInput = Array.from(
+                  new TextEncoder().encode(input),
+                  (b) => b.toString(16).padStart(2, "0")
+                ).join("");
+                const buf = new TextEncoder().encode(input).buffer;
+
+                const [hs, hb, ds, db] = await Promise.all([
+                  hashString(input, alg),
+                  hashBytes(hexInput, alg),
+                  digest(input, alg).then((u8) =>
+                    Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join("")
+                  ),
+                  digest(buf, alg).then((u8) =>
+                    Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join("")
+                  ),
+                ]);
+
+                const allMatch = hs === hb && hb === ds && ds === db;
+                log(
+                  `All hash methods agree: ${allMatch ? "✓ YES" : "✗ NO"}\n\nhashString:       ${hs}\nhashBytes:        ${hb}\ndigest (string):  ${ds}\ndigest (buffer):  ${db}`
                 );
               } catch (e) {
                 logError(e);

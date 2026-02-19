@@ -287,32 +287,65 @@ export function generateSalt(length: number): Promise<string> {
 }
 
 /**
+ * Hashes a UTF-8 [data] string with [algorithm] (default: "sha-256").
+ * Returns the hash as a lowercase hex string.
+ *
+ * Prefer {@link digest} when you need a `Uint8Array` result or need to
+ * hash raw bytes. Use this when you already have a string and want the
+ * raw hex output with minimal overhead.
+ */
+export function hashString(
+  data: string,
+  algorithm: string = "sha-256"
+): Promise<string> {
+  return IoReactNativeCrypto.hashString(data, algorithm);
+}
+
+/**
+ * Hashes raw bytes supplied as a lowercase hex string [hexData]
+ * with [algorithm] (default: "sha-256").
+ * Returns the hash as a lowercase hex string.
+ *
+ * The caller is responsible for hex-encoding the bytes before passing them.
+ * Prefer {@link digest} when working with `ArrayBuffer` inputs.
+ */
+export function hashBytes(
+  hexData: string,
+  algorithm: string = "sha-256"
+): Promise<string> {
+  return IoReactNativeCrypto.hashBytes(hexData, algorithm);
+}
+
+/**
  * Hashes [data] using the given [algorithm] (default: "sha-256").
  * Accepts a UTF-8 string or an ArrayBuffer.
  * Returns the raw hash bytes as a Uint8Array.
+ *
+ * The signature is compatible with the `Hasher` type from `@sd-jwt/types`,
+ * so this function can be passed directly to `SDJwtInstance` as the `hasher`.
  */
 export function digest(
   data: string | ArrayBuffer,
-  algorithm: SupportedHashAlgorithm = "sha-256"
+  algorithm: string = "sha-256"
 ): Promise<Uint8Array> {
-  let inputArg: string;
-  let isBase64: boolean;
+  const nativeCall =
+    typeof data === "string"
+      ? IoReactNativeCrypto.hashString(data, algorithm)
+      : IoReactNativeCrypto.hashBytes(
+          Array.from(new Uint8Array(data), (b) =>
+            b.toString(16).padStart(2, "0")
+          ).join(""),
+          algorithm
+        );
 
-  if (typeof data === "string") {
-    inputArg = data;
-    isBase64 = false;
-  } else {
-    // Encode the raw bytes as Base64 so they survive the bridge
-    const bytes = new Uint8Array(data);
-    let binary = "";
-    bytes.forEach((b) => (binary += String.fromCharCode(b)));
-    inputArg = btoa(binary);
-    isBase64 = true;
-  }
-
-  return IoReactNativeCrypto.hash(inputArg, isBase64, algorithm).then(
-    (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
-  );
+  // Native returns a lowercase hex string; parse it to Uint8Array without atob.
+  return nativeCall.then((hex: string) => {
+    const result = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < result.length; i++) {
+      result[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+    }
+    return result;
+  });
 }
 
 /**
@@ -384,7 +417,8 @@ export async function getSigner(
 ) {
   const curve = keyAlgorithm.namedCurve;
   const hash = signAlgorithm.hash.name;
-  return (data: string) => signWithEphemeralKey(data, privateKeyJWK, curve, hash);
+  return (data: string) =>
+    signWithEphemeralKey(data, privateKeyJWK, curve, hash);
 }
 
 export async function getVerifier(

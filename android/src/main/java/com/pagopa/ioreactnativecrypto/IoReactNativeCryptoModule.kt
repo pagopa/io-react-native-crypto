@@ -624,22 +624,39 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   }
 
   /**
-   * Hashes [data] using [algorithm] ("sha-256", "sha-384", "sha-512").
-   * When [isBase64Input] is true, [data] is a Base64-encoded byte array;
-   * otherwise it is treated as a UTF-8 string.
-   * Resolves with the hash as a Base64-encoded string (no wrap).
+   * Hashes a UTF-8 [data] string using [algorithm] ("sha-256", "sha-384", "sha-512").
+   * Resolves with the hash as a lowercase hex string.
    */
   @ReactMethod
-  fun hash(data: String, isBase64Input: Boolean, algorithm: String, promise: Promise) {
+  fun hashString(data: String, algorithm: String, promise: Promise) {
     moduleScope.launch {
       try {
-        val inputBytes = if (isBase64Input) {
-          Base64.decode(data, Base64.DEFAULT)
-        } else {
-          data.toByteArray(Charsets.UTF_8)
-        }
+        val result = SoftCryptoUtils.hash(data.toByteArray(Charsets.UTF_8), algorithm)
+        promise.resolve(result.joinToString("") { "%02x".format(it) })
+      } catch (e: IllegalArgumentException) {
+        ModuleException.UNSUPPORTED_ALGORITHM.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      } catch (e: Exception) {
+        ModuleException.HASH_ERROR.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      }
+    }
+  }
+
+  /**
+   * Hashes raw bytes supplied as a lowercase hex string [hexData]
+   * using [algorithm] ("sha-256", "sha-384", "sha-512").
+   * Resolves with the hash as a lowercase hex string.
+   */
+  @ReactMethod
+  fun hashBytes(hexData: String, algorithm: String, promise: Promise) {
+    moduleScope.launch {
+      try {
+        val inputBytes = hexData.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         val result = SoftCryptoUtils.hash(inputBytes, algorithm)
-        promise.resolve(Base64.encodeToString(result, Base64.NO_WRAP))
+        promise.resolve(result.joinToString("") { "%02x".format(it) })
       } catch (e: IllegalArgumentException) {
         ModuleException.UNSUPPORTED_ALGORITHM.reject(
           promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")

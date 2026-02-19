@@ -265,3 +265,20 @@ extension String {
     return Data(base64Encoded: base64)
   }
 }
+
+extension Data {
+  /// Decodes a lowercase hex string to Data.
+  /// Returns nil if the string has an odd length or non-hex digits.
+  init?(hexEncoded hex: String) {
+    guard hex.count % 2 == 0 else { return nil }
+    var data = Data(capacity: hex.count / 2)
+    var index = hex.startIndex
+    while index < hex.endIndex {
+      let next = hex.index(index, offsetBy: 2)
+      guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+      data.append(byte)
+      index = next
+    }
+    self = data
+  }
+}

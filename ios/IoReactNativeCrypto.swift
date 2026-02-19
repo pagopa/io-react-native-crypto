@@ -327,37 +327,52 @@ class IoReactNativeCrypto: NSObject {
   }
 
   /**
-   * Hashes [data] with [algorithm] ("sha-256", "sha-384", "sha-512").
-   * When [isBase64Input] is true, [data] is a Base64-encoded byte array;
-   * otherwise it is treated as a UTF-8 string.
-   * Resolves with the hash as a Base64-encoded string.
+   * Hashes a UTF-8 [data] string with [algorithm] ("sha-256", "sha-384", "sha-512").
+   * Resolves with the hash as a lowercase hex string.
    */
-  @objc(hash:withIsBase64Input:withAlgorithm:withResolver:withRejecter:)
-  func hash(
+  @objc(hashString:withAlgorithm:withResolver:withRejecter:)
+  func hashString(
     data: String,
-    isBase64Input: Bool,
     algorithm: String,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
     DispatchQueue.global(qos: .userInitiated).async {
       do {
-        let inputData: Data
-        if isBase64Input {
-          guard let decoded = Data(base64Encoded: data) else {
-            ME.hashError.reject(reject: reject, ("error", "Invalid Base64 input"))
-            return
-          }
-          inputData = decoded
-        } else {
-          guard let encoded = data.data(using: .utf8) else {
-            ME.hashError.reject(reject: reject, ("error", "Invalid UTF-8 input"))
-            return
-          }
-          inputData = encoded
+        guard let inputData = data.data(using: .utf8) else {
+          ME.hashError.reject(reject: reject, ("error", "Invalid UTF-8 input"))
+          return
         }
         let result = try SoftCryptoUtils.hash(inputData, algorithm: algorithm)
-        resolve(result.base64EncodedString())
+        resolve(result.map { String(format: "%02x", $0) }.joined())
+      } catch let e as SoftCryptoUtils.SoftCryptoError {
+        ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+      } catch {
+        ME.hashError.reject(reject: reject, ("error", error.localizedDescription))
+      }
+    }
+  }
+
+  /**
+   * Hashes raw bytes supplied as a lowercase hex string [hexData]
+   * with [algorithm] ("sha-256", "sha-384", "sha-512").
+   * Resolves with the hash as a lowercase hex string.
+   */
+  @objc(hashBytes:withAlgorithm:withResolver:withRejecter:)
+  func hashBytes(
+    hexData: String,
+    algorithm: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        guard let inputData = Data(hexEncoded: hexData) else {
+          ME.hashError.reject(reject: reject, ("error", "Invalid hex input"))
+          return
+        }
+        let result = try SoftCryptoUtils.hash(inputData, algorithm: algorithm)
+        resolve(result.map { String(format: "%02x", $0) }.joined())
       } catch let e as SoftCryptoUtils.SoftCryptoError {
         ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
       } catch {
