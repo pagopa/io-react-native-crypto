@@ -20,11 +20,17 @@ import java.security.spec.ECPublicKeySpec
  */
 internal object SoftCryptoUtils {
 
+  private val secureRandom: SecureRandom by lazy { SecureRandom() }
+
+  private const val MAX_RANDOM_BYTES = 65536
+
   /** Returns [size] cryptographically-secure random bytes as a lowercase hex string. */
   fun randomBytes(size: Int): String {
-    require(size > 0) { "size must be positive" }
+    require(size > 0 && size <= MAX_RANDOM_BYTES) {
+      "size must be positive and at most $MAX_RANDOM_BYTES"
+    }
     val bytes = ByteArray(size)
-    SecureRandom().nextBytes(bytes)
+    secureRandom.nextBytes(bytes)
     return bytes.joinToString("") { "%02x".format(it) }
   }
 
