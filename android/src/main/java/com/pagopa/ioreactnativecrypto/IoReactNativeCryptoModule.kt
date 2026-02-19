@@ -1,10 +1,10 @@
 package com.pagopa.ioreactnativecrypto
 
 import android.os.Build
+import android.util.Base64
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
-import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.*
 import kotlinx.coroutines.CoroutineScope
@@ -12,13 +12,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.bouncycastle.util.BigIntegers
 import java.security.*
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
-import org.bouncycastle.util.BigIntegers
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -608,6 +608,64 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  // ─── Soft-crypto — delegate to SoftCryptoUtils ───────────────────────────
+
+  @ReactMethod
+  fun verifyES256(
+    data: String,
+    signatureBase64url: String,
+    x: String,
+    y: String,
+    promise: Promise
+  ) {
+    moduleScope.launch {
+      try {
+        promise.resolve(SoftCryptoUtils.verifyES256(data, signatureBase64url, x, y))
+      } catch (e: Exception) {
+        ModuleException.VERIFY_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      }
+    }
+  }
+
+  @ReactMethod
+  fun randomBytes(size: Int, promise: Promise) {
+    moduleScope.launch {
+      try {
+        promise.resolve(SoftCryptoUtils.randomBytes(size))
+      } catch (e: IllegalArgumentException) {
+        ModuleException.RANDOM_BYTES_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      } catch (e: Exception) {
+        ModuleException.RANDOM_BYTES_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      }
+    }
+  }
+
+  @ReactMethod
+  fun hashString(data: String, algorithm: String, promise: Promise) {
+    moduleScope.launch {
+      try {
+        promise.resolve(SoftCryptoUtils.hashString(data, algorithm))
+      } catch (e: IllegalArgumentException) {
+        ModuleException.UNSUPPORTED_ALGORITHM.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      } catch (e: Exception) {
+        ModuleException.HASH_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      }
+    }
+  }
+
+  @ReactMethod
+  fun hashBytes(hexData: String, algorithm: String, promise: Promise) {
+    moduleScope.launch {
+      try {
+        promise.resolve(SoftCryptoUtils.hashBytes(hexData, algorithm))
+      } catch (e: IllegalArgumentException) {
+        ModuleException.UNSUPPORTED_ALGORITHM.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      } catch (e: Exception) {
+        ModuleException.HASH_ERROR.reject(promise, Pair(ERROR_USER_INFO_KEY, e.message ?: ""))
+      }
+    }
+  }
+
   // Cleaning up the coroutine scope when the module is destroyed
   override fun invalidate() {
     super.invalidate()
@@ -674,6 +732,10 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
       CERTIFICATE_CHAIN_VALIDATION_ERROR(Exception("CERTIFICATE_CHAIN_VALIDATION_ERROR")),
+      VERIFY_ERROR(Exception("VERIFY_ERROR")),
+      RANDOM_BYTES_ERROR(Exception("RANDOM_BYTES_ERROR")),
+      HASH_ERROR(Exception("HASH_ERROR")),
+      UNSUPPORTED_ALGORITHM(Exception("UNSUPPORTED_ALGORITHM")),
       UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
 
       fun reject(

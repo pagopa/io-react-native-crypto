@@ -308,6 +308,91 @@ class IoReactNativeCrypto: NSObject {
     }
   }
 
+  // ─── Soft-crypto primitives — delegate to SoftCryptoUtils ────────────────
+
+  @objc(randomBytes:withResolver:withRejecter:)
+  func randomBytes(
+    size: NSNumber,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        resolve(try SoftCryptoUtils.randomBytes(size.intValue))
+      } catch {
+        ME.randomBytesError.reject(reject: reject, ("error", error.localizedDescription))
+      }
+    }
+  }
+
+  @objc(verifyES256:withSignature:withX:withY:withResolver:withRejecter:)
+  func verifyES256(
+    data: String,
+    signatureBase64url: String,
+    x: String,
+    y: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        resolve(try SoftCryptoUtils.verifyES256(data, signatureBase64url: signatureBase64url, x: x, y: y))
+      } catch {
+        ME.verifyError.reject(reject: reject, ("error", error.localizedDescription))
+      }
+    }
+  }
+
+  @objc(hashString:withAlgorithm:withResolver:withRejecter:)
+  func hashString(
+    data: String,
+    algorithm: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        resolve(try SoftCryptoUtils.hashString(data, algorithm: algorithm))
+      } catch let e as SoftCryptoUtils.SoftCryptoError {
+        switch e {
+        case .invalidInput:
+          ME.invalidUTF8Encoding.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        case .unsupportedAlgorithm:
+          ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        default:
+          ME.hashError.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        }
+      } catch {
+        ME.hashError.reject(reject: reject, ("error", error.localizedDescription))
+      }
+    }
+  }
+
+  @objc(hashBytes:withAlgorithm:withResolver:withRejecter:)
+  func hashBytes(
+    hexData: String,
+    algorithm: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        resolve(try SoftCryptoUtils.hashBytes(hexData, algorithm: algorithm))
+      } catch let e as SoftCryptoUtils.SoftCryptoError {
+        switch e {
+        case .unsupportedAlgorithm:
+          ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        case .invalidInput:
+          ME.hashError.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        default:
+          ME.hashError.reject(reject: reject, ("error", e.localizedDescription ?? ""))
+        }
+      } catch {
+        ME.hashError.reject(reject: reject, ("error", error.localizedDescription))
+      }
+    }
+  }
+
   private func signData(
     _ message: Data,
     _ privateKey: SecKey,
@@ -382,28 +467,27 @@ class IoReactNativeCrypto: NSObject {
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
     case certificatesValidationError = "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+    case verifyError = "VERIFY_ERROR"
+    case randomBytesError = "RANDOM_BYTES_ERROR"
+    case hashError = "HASH_ERROR"
+    case unsupportedAlgorithm = "UNSUPPORTED_ALGORITHM"
 
     func error(userInfo: [String : Any]? = nil) -> NSError {
       switch self {
-      case .keyAlreadyExists:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .unsupportedDevice:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .wrongKeyConfiguration:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .publicKeyNotFound:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .publicKeyDeletionError:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .keychainLoadFailed:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .invalidUTF8Encoding:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .unableToSign:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .threadingError:
-        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
-      case .certificatesValidationError:
+      case .keyAlreadyExists,
+           .unsupportedDevice,
+           .wrongKeyConfiguration,
+           .publicKeyNotFound,
+           .publicKeyDeletionError,
+           .keychainLoadFailed,
+           .invalidUTF8Encoding,
+           .unableToSign,
+           .threadingError,
+           .certificatesValidationError,
+           .verifyError,
+           .randomBytesError,
+           .hashError,
+           .unsupportedAlgorithm:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       }
     }
@@ -417,14 +501,4 @@ class IoReactNativeCrypto: NSObject {
   }
 }
 
-extension Data {
-  /// Converts the data to a base64url string (RFC 7515), without padding
-  /// - Replaces + with -, / with _, and removes trailing =
-  func base64UrlEncodedString() -> String {
-    return self.base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-}
 

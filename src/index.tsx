@@ -13,7 +13,11 @@ type CryptoErrorCodesIOS =
   | "INVALID_UTF8_ENCODING"
   | "UNABLE_TO_SIGN"
   | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
-  | "THREADING_ERROR";
+  | "THREADING_ERROR"
+  | "VERIFY_ERROR"
+  | "RANDOM_BYTES_ERROR"
+  | "HASH_ERROR"
+  | "UNSUPPORTED_ALGORITHM";
 
 /**
  * Error codes returned by the Android side.
@@ -30,6 +34,10 @@ type CryptoErrorCodesAndroid =
   | "INVALID_UTF8_ENCODING"
   | "INVALID_SIGN_ALGORITHM"
   | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+  | "VERIFY_ERROR"
+  | "RANDOM_BYTES_ERROR"
+  | "HASH_ERROR"
+  | "UNSUPPORTED_ALGORITHM"
   | "UNKNOWN_EXCEPTION";
 
 /**
@@ -251,3 +259,118 @@ export function verifyCertificateChain(
     options
   );
 }
+
+// ─── Soft-crypto primitives ───────────────────────────────────────────────
+
+export type SupportedHashAlgorithm = "sha-256" | "sha-384" | "sha-512";
+
+const hexToUint8Array = (hex: string): Uint8Array => {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+};
+
+/**
+ * Hashes [data] using the given [algorithm] (default: "sha-256").
+ * Accepts a UTF-8 string or an ArrayBuffer.
+ * Returns the raw hash bytes as a Uint8Array.
+ *
+ * Compatible with the `Hasher` type from `@sd-jwt/types` — can be passed
+ * directly to `SDJwtInstance` as the `hasher` option.
+ */
+export function digest(
+  data: string | ArrayBuffer,
+  algorithm: SupportedHashAlgorithm = "sha-256"
+): Promise<Uint8Array> {
+  if (typeof data === "string") {
+    return IoReactNativeCrypto.hashString(data, algorithm).then(
+      hexToUint8Array
+    );
+  }
+  const hex = Array.from(new Uint8Array(data), (b) =>
+    b.toString(16).padStart(2, "0")
+  ).join("");
+  return IoReactNativeCrypto.hashBytes(hex, algorithm).then(hexToUint8Array);
+}
+
+/**
+ * Returns [byteLength] cryptographically-secure random bytes as a Uint8Array.
+ * Uses SecureRandom on Android and SecRandomCopyBytes on iOS.
+ */
+export function generateRandomBytes(byteLength: number): Promise<Uint8Array> {
+  return IoReactNativeCrypto.randomBytes(byteLength).then(hexToUint8Array);
+}
+
+/**
+ * Returns [byteLength] cryptographically-secure random bytes as a lowercase
+ * hex string of length byteLength * 2.
+ * Uses SecureRandom on Android and SecRandomCopyBytes on iOS.
+ */
+export function generateRandomHex(byteLength: number): Promise<string> {
+  return IoReactNativeCrypto.randomBytes(byteLength);
+}
+
+const ALPHANUMERIC = "0123456789abcdefghijklmnopqrstuvwxyz";
+// 256 is not evenly divisible by 36, so bytes [252..255] would bias indices
+// [0..3]. Rejecting them gives a perfectly uniform distribution over [0..35].
+const ALPHANUMERIC_THRESHOLD =
+  Math.floor(256 / ALPHANUMERIC.length) * ALPHANUMERIC.length; // 252
+
+/**
+ * Returns a cryptographically-secure random alphanumeric string (a-z, 0-9)
+ * of exactly [size] characters.
+ * Uses SecureRandom on Android and SecRandomCopyBytes on iOS.
+ *
+ * Rejection sampling is used to avoid modulo bias: bytes outside the largest
+ * multiple of 36 that fits in [0, 255] are discarded, so each character has
+ * an exactly equal probability of 1/36.
+ */
+export async function generateRandomString(size: number): Promise<string> {
+  const chars: string[] = [];
+  while (chars.length < size) {
+    const bytes = await generateRandomBytes(size - chars.length);
+    for (const b of bytes) {
+      if (b < ALPHANUMERIC_THRESHOLD) {
+        chars.push(ALPHANUMERIC[b % ALPHANUMERIC.length]!);
+      }
+    }
+  }
+  return chars.join("");
+}
+
+/**
+ * Verifies an ES256 (ECDSA P-256 SHA-256) signature.
+ *
+ * [data] is the raw UTF-8 signing input (the JWS signing input string).
+ * [signatureBase64url] is the Base64URL-encoded IEEE P1363 signature (R‖S).
+ * [publicKeyJwk] is the signer's P-256 public key in JWK format.
+ *
+ * Compatible with the `Verifier` type from `@sd-jwt/types`.
+ */
+export function verifyES256(
+  data: string,
+  signatureBase64url: string,
+  publicKeyJwk: { x: string; y: string }
+): Promise<boolean> {
+  return IoReactNativeCrypto.verifyES256(
+    data,
+    signatureBase64url,
+    publicKeyJwk.x,
+    publicKeyJwk.y
+  );
+}
+
+export const ES256 = {
+  alg: "ES256",
+  /**
+   * Returns a `Verifier` function bound to [publicKeyJwk].
+   * The returned function is directly assignable to the `Verifier` type
+   * from `@sd-jwt/types`.
+   */
+  getVerifier:
+    (publicKeyJwk: { x: string; y: string }) =>
+    (data: string, signatureBase64url: string): Promise<boolean> =>
+      verifyES256(data, signatureBase64url, publicKeyJwk),
+};

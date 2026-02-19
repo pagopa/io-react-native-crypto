@@ -12,7 +12,6 @@
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		8649B3791036DB0F14ACC391 /* libPods-IoReactNativeCryptoExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E9176CF553A6F9FC97C20FEF /* libPods-IoReactNativeCryptoExample.a */; };
 		A1D764962F461BC600248B3B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D764952F461BC600248B3B /* AppDelegate.swift */; };
-		BEBC83A0672BD8A5F5FACDDC /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F322A44F498F5F81EAE2F5C3 /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,12 +31,10 @@
 		1F487BF4727D01A5BCE8B37B /* Pods-IoReactNativeCryptoExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IoReactNativeCryptoExample.release.xcconfig"; path = "Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample.release.xcconfig"; sourceTree = "<group>"; };
 		2EE70CBEA837AA4AB010D654 /* Pods-IoReactNativeCryptoExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IoReactNativeCryptoExample.debug.xcconfig"; path = "Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample.debug.xcconfig"; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = IoReactNativeCryptoExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		9ED85591D6261CBF5D36EE62 /* Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.debug.xcconfig"; path = "Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.debug.xcconfig"; sourceTree = "<group>"; };
 		A1D764952F461BC600248B3B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A1D764972F461BCD00248B3B /* IoReactNativeCryptoExample-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "IoReactNativeCryptoExample-Bridging-Header.h"; sourceTree = "<group>"; };
 		E9176CF553A6F9FC97C20FEF /* libPods-IoReactNativeCryptoExample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-IoReactNativeCryptoExample.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		F322A44F498F5F81EAE2F5C3 /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FF3769DBE65DA9E6A257FF38 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = IoReactNativeCryptoExample/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -46,7 +43,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BEBC83A0672BD8A5F5FACDDC /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -79,7 +75,6 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				E9176CF553A6F9FC97C20FEF /* libPods-IoReactNativeCryptoExample.a */,
-				F322A44F498F5F81EAE2F5C3 /* libPods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -109,7 +104,6 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* IoReactNativeCryptoExample.app */,
-				00E356EE1AD99517003FC87E /* IoReactNativeCryptoExampleTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -119,8 +113,6 @@
 			children = (
 				2EE70CBEA837AA4AB010D654 /* Pods-IoReactNativeCryptoExample.debug.xcconfig */,
 				1F487BF4727D01A5BCE8B37B /* Pods-IoReactNativeCryptoExample.release.xcconfig */,
-				9ED85591D6261CBF5D36EE62 /* Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.debug.xcconfig */,
-				48F8AFA3934F14C11DD33EE0 /* Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -132,12 +124,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 00E357021AD99517003FC87E /* Build configuration list for PBXNativeTarget "IoReactNativeCryptoExampleTests" */;
 			buildPhases = (
-				1134C5D3B0D869FCE5ABA6DF /* [CP] Check Pods Manifest.lock */,
 				00E356EA1AD99517003FC87E /* Sources */,
 				00E356EB1AD99517003FC87E /* Frameworks */,
 				00E356EC1AD99517003FC87E /* Resources */,
-				550C33C37D7F4FEC3C1CC052 /* [CP] Embed Pods Frameworks */,
-				FF65AFE5E1B8448AFB57A0B7 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -146,7 +135,6 @@
 			);
 			name = IoReactNativeCryptoExampleTests;
 			productName = IoReactNativeCryptoExampleTests;
-			productReference = 00E356EE1AD99517003FC87E /* IoReactNativeCryptoExampleTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		13B07F861A680F5B00A75B9A /* IoReactNativeCryptoExample */ = {
@@ -244,28 +232,6 @@
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"../node_modules/react-native/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"../node_modules/react-native/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\"\n";
 		};
-		1134C5D3B0D869FCE5ABA6DF /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
 		4B39843E609D1A5C3D4C9879 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -288,27 +254,6 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		550C33C37D7F4FEC3C1CC052 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			inputPaths = (
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 		BA8828B9AE3A5024FF92D349 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -317,13 +262,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -338,13 +279,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample/Pods-IoReactNativeCryptoExample-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -368,27 +305,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "export RCT_METRO_PORT=\"${RCT_METRO_PORT:=8081}\"\necho \"export RCT_METRO_PORT=${RCT_METRO_PORT}\" > \"${SRCROOT}/../node_modules/react-native/scripts/.packager.env\"\nif [ -z \"${RCT_NO_LAUNCH_PACKAGER+xxx}\" ] ; then\n  if nc -w 5 -z localhost ${RCT_METRO_PORT} ; then\n    if ! curl -s \"http://localhost:${RCT_METRO_PORT}/status\" | grep -q \"packager-status:running\" ; then\n      echo \"Port ${RCT_METRO_PORT} already in use, packager is either not running or not running correctly\"\n      exit 2\n    fi\n  else\n    open \"$SRCROOT/../node_modules/react-native/scripts/launchPackager.command\" || echo \"Can't start packager automatically\"\n  fi\nfi\n";
-			showEnvVarsInLog = 0;
-		};
-		FF65AFE5E1B8448AFB57A0B7 /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-resources-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			inputPaths = (
-			);
-			name = "[CP] Copy Pods Resources";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests/Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -422,7 +338,6 @@
 /* Begin XCBuildConfiguration section */
 		00E356F61AD99517003FC87E /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 9ED85591D6261CBF5D36EE62 /* Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -449,7 +364,6 @@
 		};
 		00E356F71AD99517003FC87E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 48F8AFA3934F14C11DD33EE0 /* Pods-IoReactNativeCryptoExample-IoReactNativeCryptoExampleTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COPY_PHASE_STRIP = NO;
