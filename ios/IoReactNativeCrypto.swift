@@ -359,7 +359,7 @@ class IoReactNativeCrypto: NSObject {
           ME.invalidUTF8Encoding.reject(reject: reject, ("error", e.localizedDescription ?? ""))
         case .unsupportedAlgorithm:
           ME.unsupportedAlgorithm.reject(reject: reject, ("error", e.localizedDescription ?? ""))
-        @unknown default:
+        default:
           ME.hashError.reject(reject: reject, ("error", e.localizedDescription ?? ""))
         }
       } catch {

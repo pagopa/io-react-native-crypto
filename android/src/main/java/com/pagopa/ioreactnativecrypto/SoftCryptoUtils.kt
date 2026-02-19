@@ -40,8 +40,13 @@ internal object SoftCryptoUtils {
     hash(data.toByteArray(Charsets.UTF_8), algorithm)
 
   /** Hashes raw bytes supplied as a lowercase hex string [hexData] with [algorithm]. */
-  fun hashBytes(hexData: String, algorithm: String): String =
-    hash(hexData.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), algorithm)
+  fun hashBytes(hexData: String, algorithm: String): String {
+    require(
+      hexData.length % 2 == 0 &&
+        hexData.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+    ) { "Invalid hex string format" }
+    return hash(hexData.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), algorithm)
+  }
 
   /**
    * Verifies an ES256 (ECDSA P-256 SHA-256) signature.
