@@ -473,7 +473,23 @@ class IoReactNativeCrypto: NSObject {
     case unsupportedAlgorithm = "UNSUPPORTED_ALGORITHM"
 
     func error(userInfo: [String : Any]? = nil) -> NSError {
-      return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+      switch self {
+      case .keyAlreadyExists,
+           .unsupportedDevice,
+           .wrongKeyConfiguration,
+           .publicKeyNotFound,
+           .publicKeyDeletionError,
+           .keychainLoadFailed,
+           .invalidUTF8Encoding,
+           .unableToSign,
+           .threadingError,
+           .certificatesValidationError,
+           .verifyError,
+           .randomBytesError,
+           .hashError,
+           .unsupportedAlgorithm:
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+      }
     }
 
     func reject(reject: RCTPromiseRejectBlock, _ moreUserInfo: (String, Any)...) {

@@ -11,6 +11,7 @@ import java.security.spec.ECGenParameterSpec
 import java.security.spec.ECParameterSpec
 import java.security.spec.ECPoint
 import java.security.spec.ECPublicKeySpec
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 /**
  * Soft-crypto utilities used by the React Native bridge.
@@ -63,34 +64,12 @@ internal object SoftCryptoUtils {
     )
     val publicKey = KeyFactory.getInstance("EC").generatePublic(pubKeySpec)
 
+    // BouncyCastle's "SHA256withPLAIN-ECDSA" accepts P1363 (R‖S) directly.
     val sigP1363 = Base64.decode(signatureBase64url, flags)
-    val sigDer = p1363ToDer(sigP1363)
-
-    val sig = Signature.getInstance("SHA256withECDSA")
+    val sig = Signature.getInstance("SHA256withPLAIN-ECDSA", BouncyCastleProvider())
     sig.initVerify(publicKey)
     sig.update(data.toByteArray(Charsets.UTF_8))
-    return sig.verify(sigDer)
-  }
-
-  /**
-   * Converts a 64-byte IEEE P1363 signature (R‖S) to DER/X9.62 format
-   * expected by java.security.Signature.
-   */
-  private fun p1363ToDer(p1363: ByteArray): ByteArray {
-    require(p1363.size == 64) { "Expected 64-byte P1363 signature for P-256" }
-    val r = p1363.copyOfRange(0, 32)
-    val s = p1363.copyOfRange(32, 64)
-
-    fun asn1Int(b: ByteArray): ByteArray {
-      var i = 0
-      while (i < b.size - 1 && b[i] == 0.toByte()) i++
-      val trimmed = b.copyOfRange(i, b.size)
-      val padded = if (trimmed[0].toInt() and 0x80 != 0) byteArrayOf(0x00) + trimmed else trimmed
-      return byteArrayOf(0x02.toByte(), padded.size.toByte()) + padded
-    }
-
-    val seq = asn1Int(r) + asn1Int(s)
-    return byteArrayOf(0x30.toByte(), seq.size.toByte()) + seq
+    return sig.verify(sigP1363)
   }
 
   private fun hash(input: ByteArray, algorithm: String): String =

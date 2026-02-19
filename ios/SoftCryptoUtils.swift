@@ -43,6 +43,8 @@ enum SoftCryptoUtils {
    * - data: the raw UTF-8 signing input (the JWS signing input string).
    * - signatureBase64url: Base64URL-encoded IEEE P1363 signature (R‖S, 64 bytes).
    * - x, y: Base64URL-encoded P-256 public key coordinates from the JWK.
+   *
+   * Uses CryptoKit — accepts P1363 natively, no DER conversion needed.
    */
   static func verifyES256(
     _ data: String,
@@ -55,65 +57,24 @@ enum SoftCryptoUtils {
       throw SoftCryptoError.invalidInput("Invalid public key coordinates")
     }
     // Uncompressed EC point: 0x04 || x (32 bytes) || y (32 bytes)
-    var keyData = Data([0x04])
-    keyData.append(contentsOf: [UInt8](repeating: 0, count: max(0, 32 - xData.count)))
-    keyData.append(xData)
-    keyData.append(contentsOf: [UInt8](repeating: 0, count: max(0, 32 - yData.count)))
-    keyData.append(yData)
+    var keyBytes = Data([0x04])
+    keyBytes.append(contentsOf: [UInt8](repeating: 0, count: max(0, 32 - xData.count)))
+    keyBytes.append(xData)
+    keyBytes.append(contentsOf: [UInt8](repeating: 0, count: max(0, 32 - yData.count)))
+    keyBytes.append(yData)
 
-    let keyAttrs: [String: Any] = [
-      kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-      kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
-      kSecAttrKeySizeInBits as String: 256
-    ]
-    var cfError: Unmanaged<CFError>?
-    guard let publicKey = SecKeyCreateWithData(keyData as CFData, keyAttrs as CFDictionary, &cfError) else {
-      throw SoftCryptoError.invalidInput("Cannot reconstruct public key")
-    }
+    let publicKey = try P256.Signing.PublicKey(x963Representation: keyBytes)
 
-    guard let sigP1363 = Data(base64URLEncoded: signatureBase64url) else {
+    guard let sigData = Data(base64URLEncoded: signatureBase64url) else {
       throw SoftCryptoError.invalidInput("Invalid signature encoding")
     }
-    let sigDer = try p1363ToDer(sigP1363)
+    let signature = try P256.Signing.ECDSASignature(rawRepresentation: sigData)
 
     guard let messageData = data.data(using: .utf8) else {
       throw SoftCryptoError.invalidInput("Invalid UTF-8 string")
     }
 
-    var verifyError: Unmanaged<CFError>?
-    return SecKeyVerifySignature(
-      publicKey,
-      .ecdsaSignatureMessageX962SHA256,
-      messageData as CFData,
-      sigDer as CFData,
-      &verifyError
-    )
-  }
-
-  /// Converts a 64-byte IEEE P1363 signature (R‖S) to DER/X9.62 format
-  /// expected by SecKeyVerifySignature.
-  private static func p1363ToDer(_ sig: Data) throws -> Data {
-    guard sig.count == 64 else {
-      throw SoftCryptoError.invalidInput("Expected 64-byte P1363 signature for P-256")
-    }
-    let r = sig.subdata(in: 0..<32)
-    let s = sig.subdata(in: 32..<64)
-
-    func asn1Int(_ bytes: Data) -> Data {
-      var trimmed = Array(bytes.drop(while: { $0 == 0 }))
-      if trimmed.isEmpty { trimmed = [0x00] }
-      if trimmed[0] & 0x80 != 0 { trimmed.insert(0x00, at: 0) }
-      var result = Data([0x02, UInt8(trimmed.count)])
-      result.append(contentsOf: trimmed)
-      return result
-    }
-
-    let rDer = asn1Int(r)
-    let sDer = asn1Int(s)
-    var der = Data([0x30, UInt8(rDer.count + sDer.count)])
-    der.append(rDer)
-    der.append(sDer)
-    return der
+    return publicKey.isValidSignature(signature, for: SHA256.hash(data: messageData))
   }
 
   /// Hashes the UTF-8 bytes of [data] with [algorithm].
