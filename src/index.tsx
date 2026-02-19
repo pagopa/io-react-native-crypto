@@ -30,6 +30,13 @@ type CryptoErrorCodesAndroid =
   | "INVALID_UTF8_ENCODING"
   | "INVALID_SIGN_ALGORITHM"
   | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+  | "GENERATE_SALT_ERROR"
+  | "HASH_ERROR"
+  | "UNSUPPORTED_ALGORITHM"
+  | "UNSUPPORTED_CURVE"
+  | "GENERATE_EPHEMERAL_KEY_PAIR_ERROR"
+  | "SIGN_EPHEMERAL_ERROR"
+  | "VERIFY_EPHEMERAL_ERROR"
   | "UNKNOWN_EXCEPTION";
 
 /**
@@ -251,3 +258,196 @@ export function verifyCertificateChain(
     options
   );
 }
+
+// ─── Soft-crypto primitives ───────────────────────────────────────────────
+
+export type SupportedHashAlgorithm = "sha-256" | "sha-384" | "sha-512";
+export type SupportedCurve = "P-256" | "P-384" | "P-521";
+
+export type EphemeralPublicKeyJwk = {
+  kty: "EC";
+  crv: SupportedCurve;
+  x: string;
+  y: string;
+};
+
+export type EphemeralPrivateKeyJwk = EphemeralPublicKeyJwk & { d: string };
+
+export type EphemeralKeyPair = {
+  publicKeyJwk: EphemeralPublicKeyJwk;
+  privateKeyJwk: EphemeralPrivateKeyJwk;
+};
+
+/**
+ * Generates a random hex salt of exactly [length] characters.
+ * Returns an empty string when length <= 0.
+ */
+export function generateSalt(length: number): Promise<string> {
+  return IoReactNativeCrypto.generateSalt(length);
+}
+
+/**
+ * Hashes [data] using the given [algorithm] (default: "sha-256").
+ * Accepts a UTF-8 string or an ArrayBuffer.
+ * Returns the raw hash bytes as a Uint8Array.
+ */
+export function digest(
+  data: string | ArrayBuffer,
+  algorithm: SupportedHashAlgorithm = "sha-256"
+): Promise<Uint8Array> {
+  let inputArg: string;
+  let isBase64: boolean;
+
+  if (typeof data === "string") {
+    inputArg = data;
+    isBase64 = false;
+  } else {
+    // Encode the raw bytes as Base64 so they survive the bridge
+    const bytes = new Uint8Array(data);
+    let binary = "";
+    bytes.forEach((b) => (binary += String.fromCharCode(b)));
+    inputArg = btoa(binary);
+    isBase64 = true;
+  }
+
+  return IoReactNativeCrypto.hash(inputArg, isBase64, algorithm).then(
+    (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+  );
+}
+
+/**
+ * Generates an ephemeral ECDSA key pair (not hardware-backed) for the given curve.
+ * Returns both keys in JWK format: { publicKeyJwk, privateKeyJwk }.
+ */
+export function generateEphemeralKeyPair(
+  namedCurve: SupportedCurve
+): Promise<EphemeralKeyPair> {
+  return IoReactNativeCrypto.generateEphemeralKeyPair(namedCurve);
+}
+
+/**
+ * Signs [data] (UTF-8) using the private key JWK and returns a
+ * Base64URL-encoded IEEE P1363 signature (R‖S).
+ */
+export function signWithEphemeralKey(
+  data: string,
+  privateKeyJwk: object,
+  namedCurve: SupportedCurve,
+  hashAlgorithm: SupportedHashAlgorithm
+): Promise<string> {
+  return IoReactNativeCrypto.signWithEphemeralKey(
+    data,
+    privateKeyJwk,
+    namedCurve,
+    hashAlgorithm
+  );
+}
+
+/**
+ * Verifies a Base64URL IEEE P1363 [signature] against [data] (UTF-8)
+ * using the public key JWK. Returns true when the signature is valid.
+ */
+export function verifyWithEphemeralKey(
+  data: string,
+  signatureBase64url: string,
+  publicKeyJwk: object,
+  namedCurve: SupportedCurve,
+  hashAlgorithm: SupportedHashAlgorithm
+): Promise<boolean> {
+  return IoReactNativeCrypto.verifyWithEphemeralKey(
+    data,
+    signatureBase64url,
+    publicKeyJwk,
+    namedCurve,
+    hashAlgorithm
+  );
+}
+
+// ─── Algorithm helpers (mirrors the node:crypto reference implementation) ──
+
+type GenerateKeyAlgorithm = { name: string; namedCurve: SupportedCurve };
+type ImportKeyAlgorithm = { name: string; namedCurve: SupportedCurve };
+type SignAlgorithm = { name: string; hash: { name: SupportedHashAlgorithm } };
+type VerifyAlgorithm = { name: string; hash: { name: SupportedHashAlgorithm } };
+
+export async function generateKeyPair(keyAlgorithm: GenerateKeyAlgorithm) {
+  const { publicKeyJwk, privateKeyJwk } = await generateEphemeralKeyPair(
+    keyAlgorithm.namedCurve
+  );
+  return { publicKey: publicKeyJwk, privateKey: privateKeyJwk };
+}
+
+export async function getSigner(
+  privateKeyJWK: object,
+  keyAlgorithm: ImportKeyAlgorithm,
+  signAlgorithm: SignAlgorithm
+) {
+  const curve = keyAlgorithm.namedCurve;
+  const hash = signAlgorithm.hash.name;
+  return (data: string) => signWithEphemeralKey(data, privateKeyJWK, curve, hash);
+}
+
+export async function getVerifier(
+  publicKeyJWK: object,
+  keyAlgorithm: ImportKeyAlgorithm,
+  verifyAlgorithm: VerifyAlgorithm
+) {
+  const curve = keyAlgorithm.namedCurve;
+  const hash = verifyAlgorithm.hash.name;
+  return (data: string, signatureBase64url: string) =>
+    verifyWithEphemeralKey(data, signatureBase64url, publicKeyJWK, curve, hash);
+}
+
+export const ES256 = {
+  alg: "ES256",
+  _keyAlgorithm: { name: "ECDSA", namedCurve: "P-256" as SupportedCurve },
+  _hashAlgorithm: {
+    name: "ECDSA",
+    hash: { name: "sha-256" as SupportedHashAlgorithm },
+  },
+  async generateKeyPair() {
+    return generateKeyPair(ES256._keyAlgorithm);
+  },
+  async getSigner(privateKeyJWK: object) {
+    return getSigner(privateKeyJWK, ES256._keyAlgorithm, ES256._hashAlgorithm);
+  },
+  async getVerifier(publicKeyJWK: object) {
+    return getVerifier(publicKeyJWK, ES256._keyAlgorithm, ES256._hashAlgorithm);
+  },
+};
+
+export const ES384 = {
+  alg: "ES384",
+  _keyAlgorithm: { name: "ECDSA", namedCurve: "P-384" as SupportedCurve },
+  _hashAlgorithm: {
+    name: "ECDSA",
+    hash: { name: "sha-384" as SupportedHashAlgorithm },
+  },
+  async generateKeyPair() {
+    return generateKeyPair(ES384._keyAlgorithm);
+  },
+  async getSigner(privateKeyJWK: object) {
+    return getSigner(privateKeyJWK, ES384._keyAlgorithm, ES384._hashAlgorithm);
+  },
+  async getVerifier(publicKeyJWK: object) {
+    return getVerifier(publicKeyJWK, ES384._keyAlgorithm, ES384._hashAlgorithm);
+  },
+};
+
+export const ES512 = {
+  alg: "ES512",
+  _keyAlgorithm: { name: "ECDSA", namedCurve: "P-521" as SupportedCurve },
+  _hashAlgorithm: {
+    name: "ECDSA",
+    hash: { name: "sha-512" as SupportedHashAlgorithm },
+  },
+  async generateKeyPair() {
+    return generateKeyPair(ES512._keyAlgorithm);
+  },
+  async getSigner(privateKeyJWK: object) {
+    return getSigner(privateKeyJWK, ES512._keyAlgorithm, ES512._hashAlgorithm);
+  },
+  async getVerifier(publicKeyJWK: object) {
+    return getVerifier(publicKeyJWK, ES512._keyAlgorithm, ES512._hashAlgorithm);
+  },
+};

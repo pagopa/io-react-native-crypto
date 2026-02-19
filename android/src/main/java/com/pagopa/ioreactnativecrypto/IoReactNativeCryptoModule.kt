@@ -12,13 +12,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.bouncycastle.util.BigIntegers
 import java.security.*
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
-import org.bouncycastle.util.BigIntegers
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -608,6 +608,171 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  // ─── Soft-crypto primitives — delegate to SoftCryptoUtils ────────────────
+
+  @ReactMethod
+  fun generateSalt(length: Int, promise: Promise) {
+    moduleScope.launch {
+      try {
+        promise.resolve(SoftCryptoUtils.generateSalt(length))
+      } catch (e: Exception) {
+        ModuleException.GENERATE_SALT_ERROR.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      }
+    }
+  }
+
+  /**
+   * Hashes [data] using [algorithm] ("sha-256", "sha-384", "sha-512").
+   * When [isBase64Input] is true, [data] is a Base64-encoded byte array;
+   * otherwise it is treated as a UTF-8 string.
+   * Resolves with the hash as a Base64-encoded string (no wrap).
+   */
+  @ReactMethod
+  fun hash(data: String, isBase64Input: Boolean, algorithm: String, promise: Promise) {
+    moduleScope.launch {
+      try {
+        val inputBytes = if (isBase64Input) {
+          Base64.decode(data, Base64.DEFAULT)
+        } else {
+          data.toByteArray(Charsets.UTF_8)
+        }
+        val result = SoftCryptoUtils.hash(inputBytes, algorithm)
+        promise.resolve(Base64.encodeToString(result, Base64.NO_WRAP))
+      } catch (e: IllegalArgumentException) {
+        ModuleException.UNSUPPORTED_ALGORITHM.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      } catch (e: Exception) {
+        ModuleException.HASH_ERROR.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      }
+    }
+  }
+
+  /**
+   * Generates an ephemeral ECDSA key pair for [namedCurve] ("P-256", "P-384", "P-521").
+   * Resolves with { publicKeyJwk: { kty, crv, x, y }, privateKeyJwk: { kty, crv, x, y, d } }.
+   */
+  @ReactMethod
+  fun generateEphemeralKeyPair(namedCurve: String, promise: Promise) {
+    moduleScope.launch {
+      try {
+        val kp = SoftCryptoUtils.generateEphemeralKeyPair(namedCurve)
+
+        val x = kp.publicX.toBase64Url()
+        val y = kp.publicY.toBase64Url()
+        val d = kp.privateD.toBase64Url()
+
+        val publicKeyJwk = Arguments.createMap().apply {
+          putString("kty", "EC")
+          putString("crv", namedCurve)
+          putString("x", x)
+          putString("y", y)
+        }
+        val privateKeyJwk = Arguments.createMap().apply {
+          putString("kty", "EC")
+          putString("crv", namedCurve)
+          putString("x", x)
+          putString("y", y)
+          putString("d", d)
+        }
+
+        promise.resolve(Arguments.createMap().apply {
+          putMap("publicKeyJwk", publicKeyJwk)
+          putMap("privateKeyJwk", privateKeyJwk)
+        })
+      } catch (e: IllegalArgumentException) {
+        ModuleException.UNSUPPORTED_CURVE.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      } catch (e: Exception) {
+        ModuleException.GENERATE_EPHEMERAL_KEY_PAIR_ERROR.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      }
+    }
+  }
+
+  /**
+   * Signs [data] (UTF-8) with the private key JWK [privateKeyJwk] (must contain "d").
+   * Resolves with the IEEE P1363 signature (R‖S) as a Base64URL string.
+   */
+  @ReactMethod
+  fun signWithEphemeralKey(
+    data: String,
+    privateKeyJwk: ReadableMap,
+    namedCurve: String,
+    hashAlgorithm: String,
+    promise: Promise
+  ) {
+    moduleScope.launch {
+      try {
+        val dB64 = privateKeyJwk.getString("d")
+          ?: throw IllegalArgumentException("Missing 'd' in private key JWK")
+        val dBytes = Base64.decode(dB64, Base64.URL_SAFE or Base64.NO_PADDING)
+
+        val raw = SoftCryptoUtils.sign(
+          data.toByteArray(Charsets.UTF_8), dBytes, namedCurve, hashAlgorithm
+        )
+        promise.resolve(
+          Base64.encodeToString(raw, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        )
+      } catch (e: IllegalArgumentException) {
+        ModuleException.UNSUPPORTED_CURVE.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      } catch (e: Exception) {
+        ModuleException.SIGN_EPHEMERAL_ERROR.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      }
+    }
+  }
+
+  /**
+   * Verifies a Base64URL IEEE P1363 [signatureBase64url] against [data] (UTF-8)
+   * using the public key JWK [publicKeyJwk] (must contain "x" and "y").
+   * Resolves with true when the signature is valid.
+   */
+  @ReactMethod
+  fun verifyWithEphemeralKey(
+    data: String,
+    signatureBase64url: String,
+    publicKeyJwk: ReadableMap,
+    namedCurve: String,
+    hashAlgorithm: String,
+    promise: Promise
+  ) {
+    moduleScope.launch {
+      try {
+        val xB64 = publicKeyJwk.getString("x")
+          ?: throw IllegalArgumentException("Missing 'x' in public key JWK")
+        val yB64 = publicKeyJwk.getString("y")
+          ?: throw IllegalArgumentException("Missing 'y' in public key JWK")
+        val xBytes = Base64.decode(xB64, Base64.URL_SAFE or Base64.NO_PADDING)
+        val yBytes = Base64.decode(yB64, Base64.URL_SAFE or Base64.NO_PADDING)
+        val rawSig = Base64.decode(signatureBase64url, Base64.URL_SAFE or Base64.NO_PADDING)
+
+        promise.resolve(
+          SoftCryptoUtils.verify(
+            data.toByteArray(Charsets.UTF_8), rawSig, xBytes, yBytes, namedCurve, hashAlgorithm
+          )
+        )
+      } catch (e: IllegalArgumentException) {
+        ModuleException.UNSUPPORTED_CURVE.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      } catch (e: Exception) {
+        ModuleException.VERIFY_EPHEMERAL_ERROR.reject(
+          promise, Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+        )
+      }
+    }
+  }
+
   // Cleaning up the coroutine scope when the module is destroyed
   override fun invalidate() {
     super.invalidate()
@@ -674,6 +839,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
       CERTIFICATE_CHAIN_VALIDATION_ERROR(Exception("CERTIFICATE_CHAIN_VALIDATION_ERROR")),
+      GENERATE_SALT_ERROR(Exception("GENERATE_SALT_ERROR")),
+      HASH_ERROR(Exception("HASH_ERROR")),
+      UNSUPPORTED_ALGORITHM(Exception("UNSUPPORTED_ALGORITHM")),
+      UNSUPPORTED_CURVE(Exception("UNSUPPORTED_CURVE")),
+      GENERATE_EPHEMERAL_KEY_PAIR_ERROR(Exception("GENERATE_EPHEMERAL_KEY_PAIR_ERROR")),
+      SIGN_EPHEMERAL_ERROR(Exception("SIGN_EPHEMERAL_ERROR")),
+      VERIFY_EPHEMERAL_ERROR(Exception("VERIFY_EPHEMERAL_ERROR")),
       UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
 
       fun reject(

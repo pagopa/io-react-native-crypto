@@ -32,6 +32,35 @@ RCT_EXTERN_METHOD(verifyCertificateChain:(NSArray *)certChainBase64
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(generateSalt:(nonnull NSNumber *)length
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(hash:(NSString *)data
+                  withIsBase64Input:(BOOL)isBase64Input
+                  withAlgorithm:(NSString *)algorithm
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(generateEphemeralKeyPair:(NSString *)namedCurve
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(signWithEphemeralKey:(NSString *)data
+                  withPrivateKeyJwk:(NSDictionary *)privateKeyJwk
+                  withNamedCurve:(NSString *)namedCurve
+                  withHashAlgorithm:(NSString *)hashAlgorithm
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(verifyWithEphemeralKey:(NSString *)data
+                  withSignatureBase64url:(NSString *)signatureBase64url
+                  withPublicKeyJwk:(NSDictionary *)publicKeyJwk
+                  withNamedCurve:(NSString *)namedCurve
+                  withHashAlgorithm:(NSString *)hashAlgorithm
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
 + (BOOL)requiresMainQueueSetup
 {
   return NO;
