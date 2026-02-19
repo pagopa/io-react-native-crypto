@@ -282,7 +282,7 @@ const hexToUint8Array = (hex: string): Uint8Array => {
  */
 export function digest(
   data: string | ArrayBuffer,
-  algorithm: string = "sha-256"
+  algorithm: SupportedHashAlgorithm = "sha-256"
 ): Promise<Uint8Array> {
   if (typeof data === "string") {
     return IoReactNativeCrypto.hashString(data, algorithm).then(
