@@ -22,6 +22,8 @@ import {
   isKeyStrongboxBacked,
   sign,
   verifyCertificateChain,
+  generateRandomString,
+  generateRandomHex,
 } from "@pagopa/io-react-native-crypto";
 import {
   mockCertificateChainReal,
@@ -175,6 +177,22 @@ export default function App() {
                 .then((bytes) =>
                   log(`generateRandomBytes(32):\n${toHex(bytes)}`)
                 )
+                .catch(logError)
+            }
+          />
+          <Btn
+            title="generateRandomHex(32)"
+            onPress={() =>
+              generateRandomHex(32)
+                .then((hex) => log(`generateRandomHex(32):\n${hex}`))
+                .catch(logError)
+            }
+          />
+          <Btn
+            title="generateRandomString(32)"
+            onPress={() =>
+              generateRandomString(32)
+                .then((str) => log(`generateRandomString(32):\n${str}`))
                 .catch(logError)
             }
           />
