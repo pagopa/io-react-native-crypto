@@ -1,36 +1,36 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform } from "react-native";
 
 /**
  * Error codes returned by the iOS module.
  */
 type CryptoErrorCodesIOS =
-  | 'KEY_ALREADY_EXISTS'
-  | 'UNSUPPORTED_DEVICE'
-  | 'WRONG_KEY_CONFIGURATION'
-  | 'PUBLIC_KEY_NOT_FOUND'
-  | 'PUBLIC_KEY_DELETION_ERROR'
-  | 'KEYCHAIN_LOAD_FAILED'
-  | 'INVALID_UTF8_ENCODING'
-  | 'UNABLE_TO_SIGN'
-  | 'CERTIFICATE_CHAIN_VALIDATION_ERROR'
-  | 'THREADING_ERROR';
+  | "KEY_ALREADY_EXISTS"
+  | "UNSUPPORTED_DEVICE"
+  | "WRONG_KEY_CONFIGURATION"
+  | "PUBLIC_KEY_NOT_FOUND"
+  | "PUBLIC_KEY_DELETION_ERROR"
+  | "KEYCHAIN_LOAD_FAILED"
+  | "INVALID_UTF8_ENCODING"
+  | "UNABLE_TO_SIGN"
+  | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+  | "THREADING_ERROR";
 
 /**
  * Error codes returned by the Android side.
  */
 type CryptoErrorCodesAndroid =
-  | 'KEY_ALREADY_EXISTS'
-  | 'UNSUPPORTED_DEVICE'
-  | 'WRONG_KEY_CONFIGURATION'
-  | 'PUBLIC_KEY_NOT_FOUND'
-  | 'PUBLIC_KEY_DELETION_ERROR'
-  | 'API_LEVEL_NOT_SUPPORTED'
-  | 'KEYSTORE_LOAD_FAILED'
-  | 'UNABLE_TO_SIGN'
-  | 'INVALID_UTF8_ENCODING'
-  | 'INVALID_SIGN_ALGORITHM'
-  | 'CERTIFICATE_CHAIN_VALIDATION_ERROR'
-  | 'UNKNOWN_EXCEPTION';
+  | "KEY_ALREADY_EXISTS"
+  | "UNSUPPORTED_DEVICE"
+  | "WRONG_KEY_CONFIGURATION"
+  | "PUBLIC_KEY_NOT_FOUND"
+  | "PUBLIC_KEY_DELETION_ERROR"
+  | "API_LEVEL_NOT_SUPPORTED"
+  | "KEYSTORE_LOAD_FAILED"
+  | "UNABLE_TO_SIGN"
+  | "INVALID_UTF8_ENCODING"
+  | "INVALID_SIGN_ALGORITHM"
+  | "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+  | "UNKNOWN_EXCEPTION";
 
 /**
  * All error codes that the module could return.
@@ -52,7 +52,7 @@ export type CryptoError = {
  * This is the JWK JSON type for the EC keys.
  */
 export type ECKey = {
-  kty: 'EC';
+  kty: "EC";
   crv: string;
   x: string;
   y: string;
@@ -62,7 +62,7 @@ export type ECKey = {
  * This is the JWK JSON type for the RSA keys.
  */
 export type RSAKey = {
-  kty: 'RSA';
+  kty: "RSA";
   alg: string;
   e: string;
   n: string;
@@ -77,18 +77,18 @@ export type PublicKey = ECKey | RSAKey;
  * Represents the status of certificate validation
  */
 export enum CertificateValidationStatus {
-  VALID = 'VALID',
-  INVALID_CHAIN_PATH = 'INVALID_CHAIN_PATH', // Basic chain path validation failed (e.g., signature, structure)
-  INVALID_TRUST_ANCHOR = 'INVALID_TRUST_ANCHOR', // Provided trust anchor is invalid or does not match the chain
-  EXPIRED = 'CERTIFICATE_EXPIRED', // A certificate in the chain has expired
-  NOT_YET_VALID = 'CERTIFICATE_NOT_YET_VALID', // A certificate in the chain is not yet valid
-  REVOKED = 'CERTIFICATE_REVOKED', // Certificate explicitly marked as revoked in CRL
-  CRL_FETCH_FAILED = 'CRL_FETCH_FAILED', // Failed to download/access/validate a CRL (when CDPs were present)
-  CRL_PARSE_FAILED = 'CRL_PARSE_FAILED', // Failed to parse CRL content
-  CRL_EXPIRED = 'CRL_EXPIRED', // CRL used is expired
-  CRL_SIGNATURE_INVALID = 'CRL_SIGNATURE_INVALID', // Signature on CRL is invalid
-  CRL_REQUIRED_BUT_MISSING_CDP = 'CRL_REQUIRED_BUT_MISSING_CDP', // CRLs required but no CDP present
-  VALIDATION_ERROR = 'VALIDATION_ERROR', // General/unexpected error during validation
+  VALID = "VALID",
+  INVALID_CHAIN_PATH = "INVALID_CHAIN_PATH", // Basic chain path validation failed (e.g., signature, structure)
+  INVALID_TRUST_ANCHOR = "INVALID_TRUST_ANCHOR", // Provided trust anchor is invalid or does not match the chain
+  EXPIRED = "CERTIFICATE_EXPIRED", // A certificate in the chain has expired
+  NOT_YET_VALID = "CERTIFICATE_NOT_YET_VALID", // A certificate in the chain is not yet valid
+  REVOKED = "CERTIFICATE_REVOKED", // Certificate explicitly marked as revoked in CRL
+  CRL_FETCH_FAILED = "CRL_FETCH_FAILED", // Failed to download/access/validate a CRL (when CDPs were present)
+  CRL_PARSE_FAILED = "CRL_PARSE_FAILED", // Failed to parse CRL content
+  CRL_EXPIRED = "CRL_EXPIRED", // CRL used is expired
+  CRL_SIGNATURE_INVALID = "CRL_SIGNATURE_INVALID", // Signature on CRL is invalid
+  CRL_REQUIRED_BUT_MISSING_CDP = "CRL_REQUIRED_BUT_MISSING_CDP", // CRLs required but no CDP present
+  VALIDATION_ERROR = "VALIDATION_ERROR", // General/unexpected error during validation
 }
 
 /**
@@ -114,9 +114,9 @@ export interface CertificateValidationResult {
 
 const LINKING_ERROR =
   `The package '@pagopa/io-react-native-crypto' doesn't seem to be linked. Make sure: \n\n` +
-  Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
-  '- You rebuilt the app after installing the package\n' +
-  '- You are not using Expo Go\n';
+  Platform.select({ ios: "- You have run 'pod install'\n", default: "" }) +
+  "- You rebuilt the app after installing the package\n" +
+  "- You are not using Expo Go\n";
 
 const IoReactNativeCrypto = NativeModules.IoReactNativeCrypto
   ? NativeModules.IoReactNativeCrypto
@@ -163,7 +163,6 @@ export function getPublicKey(keyTag: string): Promise<PublicKey> {
 export function getPublicKeyFixed(keyTag: string): Promise<PublicKey> {
   return IoReactNativeCrypto.getPublicKeyFixed(keyTag);
 }
-
 
 /**
  * This function generates a key pair and returns the public key
