@@ -21,3 +21,17 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+// react-native-gradle-plugin 0.75 registers the OSSRH snapshots repository
+// (oss.sonatype.org), which was decommissioned in June 2025 and now times
+// out; the failing repository aborts every dependency resolution. Nightly
+// RN builds are not used here, so drop it once all projects are configured.
+gradle.projectsEvaluated {
+    rootProject.allprojects { project ->
+        project.repositories.removeAll(
+            project.repositories.findAll { repo ->
+                repo.hasProperty('url') && repo.url.toString().contains('oss.sonatype.org')
+            }
+        )
+    }
+}

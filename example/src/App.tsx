@@ -7,6 +7,7 @@ import {
   TextInput,
   Button,
   ScrollView,
+  Switch,
 } from 'react-native';
 import {
   CryptoError,
@@ -23,6 +24,8 @@ import {
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
   const [keyTag, setKeyTag] = React.useState<string>('key');
+  const [requireAuthentication, setRequireAuthentication] =
+    React.useState<boolean>(false);
 
   return (
     <SafeAreaView style={{ flex: 1, padding: 20 }}>
@@ -45,6 +48,20 @@ export default function App() {
           }}
           placeholder="key tag"
         />
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}
+        >
+          <Text>Require authentication (biometric / PIN) on create</Text>
+          <Switch
+            value={requireAuthentication}
+            onValueChange={setRequireAuthentication}
+          />
+        </View>
         <View
           style={{
             flexDirection: 'row',
@@ -97,7 +114,19 @@ export default function App() {
             <Button
               title="create"
               onPress={() => {
-                generate(keyTag)
+                generate(
+                  keyTag,
+                  requireAuthentication
+                    ? {
+                        requireAuthentication: true,
+                        authenticationPrompt: {
+                          title: 'Confirm signing',
+                          subtitle: `Authenticate to use the key "${keyTag}"`,
+                          cancel: 'Cancel',
+                        },
+                      }
+                    : undefined
+                )
                   .then((value) => {
                     console.log(JSON.stringify(value));
                     setLogText(JSON.stringify(value));

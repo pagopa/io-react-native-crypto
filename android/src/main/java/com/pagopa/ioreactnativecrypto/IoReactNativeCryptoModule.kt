@@ -1,11 +1,20 @@
 package com.pagopa.ioreactnativecrypto
 
+import android.app.KeyguardManager
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties.*
+import android.security.keystore.StrongBoxUnavailableException
+import android.security.keystore.UserNotAuthenticatedException
 import android.util.Base64
 import androidx.annotation.RequiresApi
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.facebook.react.bridge.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +27,7 @@ import java.security.interfaces.RSAPublicKey
 import java.security.spec.AlgorithmParameterSpec
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
+import java.util.concurrent.atomic.AtomicBoolean
 import org.bouncycastle.util.BigIntegers
 
 class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
@@ -47,11 +57,19 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   @ReactMethod
   fun generate(
     keyTag: String,
+    options: ReadableMap?,
     promise: Promise
   ) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      val policy = KeyAuthenticationPolicy(options)
+      if (policy.requireAuthentication && !canAuthenticateForKeyUse(promise)) {
+        // Fail upfront with a meaningful error: generating an
+        // authentication-gated key without the required credentials
+        // enrolled would fail with an opaque keystore error.
+        return
+      }
       threadHandle = Thread {
-        generate(KeyConfig.EC_P_256, true, keyTag, promise)
+        generate(KeyConfig.EC_P_256, true, keyTag, policy, promise)
         return@Thread
       }
       threadHandle?.start()
@@ -60,11 +78,42 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  /**
+   * Checks that the device credentials required by an
+   * authentication-gated key are enrolled, rejecting the promise if not:
+   * - A device PIN/pattern/password is the baseline on every API level.
+   * - On API < 30 per-use authentication is enforceable only through a
+   *   (strong) biometric bound to the crypto operation, so an enrolled
+   *   biometric is also required there.
+   */
+  @RequiresApi(Build.VERSION_CODES.M)
+  private fun canAuthenticateForKeyUse(promise: Promise): Boolean {
+    val keyguardManager =
+      reactApplicationContext.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+    if (keyguardManager?.isDeviceSecure != true) {
+      ModuleException.PASSCODE_NOT_SET.reject(promise)
+      return false
+    }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+      val canAuthenticate = BiometricManager.from(reactApplicationContext)
+        .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+      if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+        ModuleException.BIOMETRICS_NOT_AVAILABLE.reject(
+          promise,
+          Pair(ERROR_USER_INFO_KEY, "canAuthenticate=$canAuthenticate")
+        )
+        return false
+      }
+    }
+    return true
+  }
+
   @RequiresApi(Build.VERSION_CODES.M)
   private fun generate(
     keyConfig: KeyConfig,
     strongBox: Boolean,
     keyTag: String,
+    policy: KeyAuthenticationPolicy,
     promise: Promise
   ) {
     // https://reactnative.dev/docs/native-modules-android#threading
@@ -85,41 +134,39 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         )
         return
       }
-      val keySpecGenerator = KeyGenParameterSpec.Builder(
-        keyTag, PURPOSE_SIGN
-      ).apply {
-        keyConfig.algorithmParam?.let {
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            setIsStrongBoxBacked(strongBox)
-          }
-          if (keyConfig == KeyConfig.EC_P_256) {
-            setAlgorithmParameterSpec(ECGenParameterSpec(it))
-          } else {
-            setAlgorithmParameterSpec(
-              RSAKeyGenParameterSpec(
-                // RSA key size must be >= 512 and <= 8192
-                it.toInt(),
-                RSAKeyGenParameterSpec.F4 // 65537
-              )
-            )
-          }
-        }
-        setDigests(
-          DIGEST_SHA256,
-        )
-        if (keyConfig == KeyConfig.RSA) {
-          // or SIGNATURE_PADDING_RSA_PKCS1
-          // https://crypto.stackexchange.com/questions/48407/should-i-be-using-pkcs1-v1-5-or-pss-for-rsa-signatures
-          setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
-        }
-      }
-      val keySpec: AlgorithmParameterSpec = keySpecGenerator.build()
+      val keySpec: AlgorithmParameterSpec = buildKeyGenParameterSpec(
+        keyConfig, strongBox, keyTag, policy
+      )
       val keyPairGenerator = KeyPairGenerator.getInstance(
         keyConfig.algorithm,
         KEYSTORE_PROVIDER
       ).also { it.initialize(keySpec) }
-      val keyPair = keyPairGenerator.generateKeyPair()
+      val keyPair = try {
+        keyPairGenerator.generateKeyPair()
+      } catch (e: Exception) {
+        // Some devices reject specific spec combinations on the StrongBox
+        // (e.g. user authentication bound keys): retry once on the TEE
+        // before entering the broader fallback chain below.
+        if (strongBox
+          && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+          && e is StrongBoxUnavailableException
+        ) {
+          keyPairGenerator.initialize(
+            buildKeyGenParameterSpec(keyConfig, false, keyTag, policy)
+          )
+          keyPairGenerator.generateKeyPair()
+        } else {
+          throw e
+        }
+      }
       ensureKeyHardwareBacked(keyTag)
+      if (policy.requireAuthentication) {
+        // Persist the prompt strings so that sign() can build the
+        // authentication prompt for this key later on. Gating itself is
+        // NOT read from here: it is enforced by (and queried from) the
+        // keystore, this data is only cosmetic.
+        storeAuthenticationPrompt(keyTag, policy)
+      }
       val publicKey = keyPair.public
       publicKeyToJwk(publicKey)?.let {
         promise.resolve(it)
@@ -131,15 +178,15 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       deleteKey(keyTag)
       val strongBoxApiAvailable = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
       if (keyConfig == KeyConfig.EC_P_256 && strongBox) {
-        generate(keyConfig, false, keyTag, promise)
+        generate(keyConfig, false, keyTag, policy, promise)
         return
       }
       if (keyConfig == KeyConfig.EC_P_256) {
-        generate(KeyConfig.RSA, strongBoxApiAvailable, keyTag, promise)
+        generate(KeyConfig.RSA, strongBoxApiAvailable, keyTag, policy, promise)
         return
       }
       if (keyConfig == KeyConfig.RSA && strongBox) {
-        generate(KeyConfig.RSA, false, keyTag, promise)
+        generate(KeyConfig.RSA, false, keyTag, policy, promise)
         return
       }
       var me: ModuleException = ModuleException.UNKNOWN_EXCEPTION
@@ -165,8 +212,128 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  /**
+   * Builds the [KeyGenParameterSpec] for a signing key pair.
+   *
+   * When [KeyAuthenticationPolicy.requireAuthentication] is set, key usage
+   * is bound by the keystore to a per-operation user authentication:
+   * - API 30+: authentication is satisfied by a strong biometric OR the
+   *   device credential (PIN/pattern/password).
+   * - API 23-29: per-operation authentication can only be biometric
+   *   (crypto-bound device credential authentication requires API 30).
+   */
+  @RequiresApi(Build.VERSION_CODES.M)
+  private fun buildKeyGenParameterSpec(
+    keyConfig: KeyConfig,
+    strongBox: Boolean,
+    keyTag: String,
+    policy: KeyAuthenticationPolicy
+  ): KeyGenParameterSpec {
+    return KeyGenParameterSpec.Builder(
+      keyTag, PURPOSE_SIGN
+    ).apply {
+      keyConfig.algorithmParam?.let {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+          setIsStrongBoxBacked(strongBox)
+        }
+        if (keyConfig == KeyConfig.EC_P_256) {
+          setAlgorithmParameterSpec(ECGenParameterSpec(it))
+        } else {
+          setAlgorithmParameterSpec(
+            RSAKeyGenParameterSpec(
+              // RSA key size must be >= 512 and <= 8192
+              it.toInt(),
+              RSAKeyGenParameterSpec.F4 // 65537
+            )
+          )
+        }
+      }
+      setDigests(
+        DIGEST_SHA256,
+      )
+      if (keyConfig == KeyConfig.RSA) {
+        // or SIGNATURE_PADDING_RSA_PKCS1
+        // https://crypto.stackexchange.com/questions/48407/should-i-be-using-pkcs1-v1-5-or-pss-for-rsa-signatures
+        setSignaturePaddings(SIGNATURE_PADDING_RSA_PSS)
+      }
+      if (policy.requireAuthentication) {
+        setUserAuthenticationRequired(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          setUserAuthenticationParameters(
+            0, // 0s validity ⇒ authentication required for every use
+            AUTH_BIOMETRIC_STRONG or AUTH_DEVICE_CREDENTIAL
+          )
+        } else {
+          // -1 ⇒ authentication required for every use, biometric-only.
+          @Suppress("DEPRECATION")
+          setUserAuthenticationValidityDurationSeconds(-1)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+          // The platform default is true: pass the policy value through
+          // so keys survive enrollment changes unless requested otherwise.
+          setInvalidatedByBiometricEnrollment(policy.invalidateOnEnrollmentChange)
+        }
+      }
+    }.build()
+  }
+
   @RequiresApi(Build.VERSION_CODES.M)
   private fun keyExists(keyTag: String) = getKeyPair(keyTag) != null
+
+  private fun authenticationPromptPreferences(): SharedPreferences =
+    reactApplicationContext.getSharedPreferences(
+      AUTH_PROMPT_PREFERENCES, Context.MODE_PRIVATE
+    )
+
+  private fun storeAuthenticationPrompt(
+    keyTag: String, policy: KeyAuthenticationPolicy
+  ) {
+    authenticationPromptPreferences().edit()
+      .putString("$keyTag$AUTH_PROMPT_TITLE_SUFFIX", policy.promptTitle)
+      .putString("$keyTag$AUTH_PROMPT_SUBTITLE_SUFFIX", policy.promptSubtitle)
+      .putString("$keyTag$AUTH_PROMPT_CANCEL_SUFFIX", policy.promptCancel)
+      .apply()
+  }
+
+  private fun clearAuthenticationPrompt(keyTag: String) {
+    authenticationPromptPreferences().edit()
+      .remove("$keyTag$AUTH_PROMPT_TITLE_SUFFIX")
+      .remove("$keyTag$AUTH_PROMPT_SUBTITLE_SUFFIX")
+      .remove("$keyTag$AUTH_PROMPT_CANCEL_SUFFIX")
+      .apply()
+  }
+
+  /**
+   * Prompt strings for the given key with defaults applied, as
+   * (title, subtitle, cancel). The subtitle is optional.
+   */
+  private fun readAuthenticationPrompt(keyTag: String): Triple<String, String?, String> {
+    val preferences = authenticationPromptPreferences()
+    return Triple(
+      preferences.getString("$keyTag$AUTH_PROMPT_TITLE_SUFFIX", null)
+        ?: DEFAULT_AUTH_PROMPT_TITLE,
+      preferences.getString("$keyTag$AUTH_PROMPT_SUBTITLE_SUFFIX", null),
+      preferences.getString("$keyTag$AUTH_PROMPT_CANCEL_SUFFIX", null)
+        ?: DEFAULT_AUTH_PROMPT_CANCEL
+    )
+  }
+
+  /**
+   * Whether the keystore requires a user authentication to use the key.
+   * This is the source of truth for the gating (not the persisted prompt
+   * metadata): it reflects the [KeyGenParameterSpec] the key was
+   * generated with.
+   */
+  @RequiresApi(Build.VERSION_CODES.M)
+  private fun isUserAuthenticationRequired(key: PrivateKey): Boolean {
+    return try {
+      val factory = KeyFactory.getInstance(key.algorithm, KEYSTORE_PROVIDER)
+      val keyInfo = factory.getKeySpec(key, KeyInfo::class.java)
+      keyInfo.isUserAuthenticationRequired
+    } catch (e: Exception) {
+      false
+    }
+  }
 
   /**
    * Return a JWK representation of the PublicKey as for this RFC:
@@ -315,6 +482,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         return false
       }
     }
+    clearAuthenticationPrompt(keyTag)
     promise?.resolve(true)
     return true
   }
@@ -443,6 +611,16 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
             // Unlike iOS this always returns a byte array.
             val messageDataBytes = message.toByteArray(charset = Charsets.UTF_8)
             val signAlgorithm = getSignAlgorithm(it)
+            if (isUserAuthenticationRequired(it)) {
+              // Authentication-gated keys reject plain sign operations
+              // with UserNotAuthenticatedException: they can only be
+              // used through a crypto operation authorized by the
+              // system authentication prompt.
+              signDataWithAuthentication(
+                messageDataBytes, it, signAlgorithm, keyTag, promise
+              )
+              return@Thread
+            }
             val signature = signData(
               messageDataBytes, it, signAlgorithm
             )
@@ -460,6 +638,10 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
           when (e) {
             is NoSuchAlgorithmException -> {
               me = ModuleException.INVALID_SIGN_ALGORITHM
+            }
+            // Subclass of InvalidKeyException: keep it first.
+            is UserNotAuthenticatedException -> {
+              me = ModuleException.USER_NOT_AUTHENTICATED
             }
             is InvalidKeyException -> {
               me = ModuleException.WRONG_KEY_CONFIGURATION
@@ -486,6 +668,143 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       threadHandle?.start()
     } else {
       ModuleException.API_LEVEL_NOT_SUPPORTED.reject(promise)
+    }
+  }
+
+  /**
+   * Signs [message] with an authentication-gated [privateKey]:
+   * the [Signature] initialized with the key is wrapped in a
+   * [BiometricPrompt.CryptoObject] and authorized by the keystore only
+   * upon a successful user authentication (biometric on every API level,
+   * device credential too on API 30+). Called from the module worker
+   * thread; the prompt itself must be shown from the UI thread.
+   *
+   * The promise is settled exactly once, from the prompt callbacks.
+   */
+  @RequiresApi(Build.VERSION_CODES.M)
+  @Throws(
+    NoSuchAlgorithmException::class,
+    InvalidKeyException::class
+  )
+  private fun signDataWithAuthentication(
+    message: ByteArray,
+    privateKey: PrivateKey,
+    signAlgorithm: String,
+    keyTag: String,
+    promise: Promise
+  ) {
+    val signatureEngine = Signature.getInstance(signAlgorithm)
+    // Throws KeyPermanentlyInvalidatedException (an InvalidKeyException)
+    // if the key was invalidated by a biometric enrollment change.
+    signatureEngine.initSign(privateKey)
+    val cryptoObject = BiometricPrompt.CryptoObject(signatureEngine)
+
+    val fragmentActivity = currentActivity as? FragmentActivity
+    if (fragmentActivity == null) {
+      // BiometricPrompt can only be attached to a FragmentActivity
+      // (ReactActivity is one). Without it no prompt can be shown.
+      ModuleException.UNABLE_TO_SIGN.reject(
+        promise,
+        Pair(
+          ERROR_USER_INFO_KEY,
+          "Cannot present the authentication prompt: current activity is null or not a FragmentActivity"
+        )
+      )
+      return
+    }
+
+    val (promptTitle, promptSubtitle, promptCancel) = readAuthenticationPrompt(keyTag)
+    val settled = AtomicBoolean(false)
+    UiThreadUtil.runOnUiThread {
+      try {
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationSucceeded(
+            result: BiometricPrompt.AuthenticationResult
+          ) {
+            if (!settled.compareAndSet(false, true)) {
+              return
+            }
+            try {
+              val authorizedSignature =
+                result.cryptoObject?.signature ?: signatureEngine
+              authorizedSignature.update(message)
+              val signatureBase64 = Base64.encodeToString(
+                authorizedSignature.sign(), Base64.NO_WRAP
+              )
+              promise.resolve(signatureBase64)
+            } catch (e: Exception) {
+              ModuleException.UNABLE_TO_SIGN.reject(
+                promise,
+                Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+              )
+            }
+          }
+
+          override fun onAuthenticationError(
+            errorCode: Int, errString: CharSequence
+          ) {
+            if (!settled.compareAndSet(false, true)) {
+              return
+            }
+            biometricErrorToException(errorCode).reject(
+              promise,
+              Pair(ERROR_USER_INFO_KEY, errString.toString()),
+              Pair("biometricErrorCode", errorCode.toString())
+            )
+          }
+
+          // onAuthenticationFailed is intentionally not overridden:
+          // it signals a single failed attempt, the prompt stays on
+          // screen and the user may retry or cancel.
+        }
+        val biometricPrompt = BiometricPrompt(
+          fragmentActivity,
+          ContextCompat.getMainExecutor(fragmentActivity),
+          callback
+        )
+        val promptInfo = BiometricPrompt.PromptInfo.Builder().apply {
+          setTitle(promptTitle)
+          promptSubtitle?.let { setSubtitle(it) }
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            setAllowedAuthenticators(
+              BiometricManager.Authenticators.BIOMETRIC_STRONG
+                or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            )
+          } else {
+            // Crypto-bound device credential authentication requires
+            // API 30+. A negative button is mandatory whenever
+            // DEVICE_CREDENTIAL is not allowed.
+            setAllowedAuthenticators(
+              BiometricManager.Authenticators.BIOMETRIC_STRONG
+            )
+            setNegativeButtonText(promptCancel)
+          }
+        }.build()
+        biometricPrompt.authenticate(promptInfo, cryptoObject)
+      } catch (e: Exception) {
+        if (settled.compareAndSet(false, true)) {
+          ModuleException.UNABLE_TO_SIGN.reject(
+            promise,
+            Pair(ERROR_USER_INFO_KEY, e.message ?: "")
+          )
+        }
+      }
+    }
+  }
+
+  /**
+   * Maps [BiometricPrompt] terminal error codes to module exceptions.
+   */
+  private fun biometricErrorToException(errorCode: Int): ModuleException {
+    return when (errorCode) {
+      BiometricPrompt.ERROR_USER_CANCELED,
+      BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+      BiometricPrompt.ERROR_CANCELED -> ModuleException.USER_CANCELED
+      BiometricPrompt.ERROR_NO_BIOMETRICS,
+      BiometricPrompt.ERROR_HW_UNAVAILABLE,
+      BiometricPrompt.ERROR_HW_NOT_PRESENT -> ModuleException.BIOMETRICS_NOT_AVAILABLE
+      BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL -> ModuleException.PASSCODE_NOT_SET
+      else -> ModuleException.AUTH_FAILED
     }
   }
 
@@ -621,6 +940,37 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     const val NAME = "IoReactNativeCrypto"
     const val KEYSTORE_PROVIDER = "AndroidKeyStore"
     const val ERROR_USER_INFO_KEY = "error"
+    private const val AUTH_PROMPT_PREFERENCES =
+      "com.pagopa.ioreactnativecrypto.auth_prompt"
+    private const val AUTH_PROMPT_TITLE_SUFFIX = ".title"
+    private const val AUTH_PROMPT_SUBTITLE_SUFFIX = ".subtitle"
+    private const val AUTH_PROMPT_CANCEL_SUFFIX = ".cancel"
+    private const val DEFAULT_AUTH_PROMPT_TITLE = "Authentication required"
+    private const val DEFAULT_AUTH_PROMPT_CANCEL = "Cancel"
+
+    /**
+     * User-authentication policy for a key pair, parsed from the options
+     * provided by the JS layer to [generate].
+     */
+    private class KeyAuthenticationPolicy(options: ReadableMap?) {
+      val requireAuthentication: Boolean =
+        options?.takeIf { it.hasKey("requireAuthentication") }
+          ?.getBoolean("requireAuthentication") ?: false
+      val invalidateOnEnrollmentChange: Boolean =
+        options?.takeIf { it.hasKey("invalidateOnEnrollmentChange") }
+          ?.getBoolean("invalidateOnEnrollmentChange") ?: false
+      val promptTitle: String
+      val promptSubtitle: String?
+      val promptCancel: String
+
+      init {
+        val prompt = options?.takeIf { it.hasKey("authenticationPrompt") }
+          ?.getMap("authenticationPrompt")
+        promptTitle = prompt?.getString("title") ?: DEFAULT_AUTH_PROMPT_TITLE
+        promptSubtitle = prompt?.getString("subtitle")
+        promptCancel = prompt?.getString("cancel") ?: DEFAULT_AUTH_PROMPT_CANCEL
+      }
+    }
 
     @RequiresApi(Build.VERSION_CODES.M)
     private enum class KeyConfig(
@@ -674,7 +1024,12 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       INVALID_UTF8_ENCODING(Exception("INVALID_UTF8_ENCODING")),
       INVALID_SIGN_ALGORITHM(Exception("INVALID_SIGN_ALGORITHM")),
       CERTIFICATE_CHAIN_VALIDATION_ERROR(Exception("CERTIFICATE_CHAIN_VALIDATION_ERROR")),
-      UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION"));
+      UNKNOWN_EXCEPTION(Exception("UNKNOWN_EXCEPTION")),
+      USER_CANCELED(Exception("USER_CANCELED")),
+      USER_NOT_AUTHENTICATED(Exception("USER_NOT_AUTHENTICATED")),
+      AUTH_FAILED(Exception("AUTH_FAILED")),
+      BIOMETRICS_NOT_AVAILABLE(Exception("BIOMETRICS_NOT_AVAILABLE")),
+      PASSCODE_NOT_SET(Exception("PASSCODE_NOT_SET"));
 
       fun reject(
         promise: Promise, vararg args: Pair<String, String>

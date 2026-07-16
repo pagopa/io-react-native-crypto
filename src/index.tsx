@@ -13,7 +13,12 @@ type CryptoErrorCodesIOS =
   | 'INVALID_UTF8_ENCODING'
   | 'UNABLE_TO_SIGN'
   | 'CERTIFICATE_CHAIN_VALIDATION_ERROR'
-  | 'THREADING_ERROR';
+  | 'THREADING_ERROR'
+  | 'USER_CANCELED'
+  | 'USER_NOT_AUTHENTICATED'
+  | 'AUTH_FAILED'
+  | 'BIOMETRICS_NOT_AVAILABLE'
+  | 'PASSCODE_NOT_SET';
 
 /**
  * Error codes returned by the Android side.
@@ -30,7 +35,12 @@ type CryptoErrorCodesAndroid =
   | 'INVALID_UTF8_ENCODING'
   | 'INVALID_SIGN_ALGORITHM'
   | 'CERTIFICATE_CHAIN_VALIDATION_ERROR'
-  | 'UNKNOWN_EXCEPTION';
+  | 'UNKNOWN_EXCEPTION'
+  | 'USER_CANCELED'
+  | 'USER_NOT_AUTHENTICATED'
+  | 'AUTH_FAILED'
+  | 'BIOMETRICS_NOT_AVAILABLE'
+  | 'PASSCODE_NOT_SET';
 
 /**
  * All error codes that the module could return.
@@ -72,6 +82,46 @@ export type RSAKey = {
  * The Public Key type. It could be either an ECKey or an RSAKey.
  */
 export type PublicKey = ECKey | RSAKey;
+
+/**
+ * Authentication policy applied to a key pair at generation time.
+ *
+ * When {@link KeyAuthenticationPolicy["requireAuthentication"]} is `true`,
+ * every {@link sign} operation performed with the key requires a fresh
+ * user authentication (biometric, with device PIN/passcode fallback).
+ * The requirement is enforced by the OS key store (iOS Secure Enclave
+ * access control / Android Keystore user-authentication binding), not by
+ * an app-level check.
+ */
+export type KeyAuthenticationPolicy = {
+  /**
+   * Require biometric-or-device-credential authentication to USE the key.
+   * Defaults to `false` (key usable without authentication, as before).
+   */
+  requireAuthentication?: boolean;
+  /**
+   * Text shown on the system authentication prompt presented during {@link sign}.
+   */
+  authenticationPrompt?: {
+    /** Title of the prompt (iOS reason text / Android prompt title). */
+    title?: string;
+    /** Subtitle of the prompt. Android only. */
+    subtitle?: string;
+    /** Negative-button text. Android only, shown when the device credential fallback is not offered by the prompt itself. */
+    cancel?: string;
+  };
+  /**
+   * If `true`, the key is invalidated when the biometric enrollment changes
+   * (e.g. a new fingerprint or face is enrolled).
+   * Defaults to `false`: on iOS the key stays usable via biometrics or passcode,
+   * on Android the key is not invalidated by enrollment changes.
+   *
+   * Note: on Android an invalidated key becomes permanently unusable, while on
+   * iOS only the biometric constraint is invalidated and the key remains
+   * usable through the device passcode.
+   */
+  invalidateOnEnrollmentChange?: boolean;
+};
 
 /**
  * Represents the status of certificate validation
@@ -179,14 +229,38 @@ export function getPublicKeyFixed(keyTag: string): Promise<PublicKey> {
  * If there is already an associated key for the given `keyTag`,
  * the promise if rejected.
  *
+ * Optionally the key can be gated behind user authentication by providing
+ * an {@link KeyAuthenticationPolicy} with `requireAuthentication: true`:
+ * every subsequent {@link sign} call with the key then requires a fresh
+ * biometric (or device PIN/passcode) authentication, enforced by the OS
+ * key store. When `options` is omitted the behavior is unchanged.
+ *
+ * Requirements for authenticated keys:
+ * - a device PIN/passcode must be set, otherwise the promise is rejected
+ *   with the `PASSCODE_NOT_SET` error code;
+ * - on Android API 23-29 the per-use authentication is biometric only,
+ *   so an enrolled (strong) biometric is required. The combined
+ *   biometric-or-device-credential gate requires Android API 30+.
+ *
  * If it is not possible to generate the key, the promise is rejected providing an
  * instance of {@link CryptoError}.
  *
  * @param keyTag - the string key tag used to save the key in the key store.
+ * @param options - optional {@link KeyAuthenticationPolicy} applied to the generated key.
  * @returns a promise that resolves to the JWK representation of the public key.
  */
-export function generate(keyTag: string): Promise<PublicKey> {
-  return IoReactNativeCrypto.generate(keyTag);
+export function generate(
+  keyTag: string,
+  options?: KeyAuthenticationPolicy
+): Promise<PublicKey> {
+  const normalizedOptions: KeyAuthenticationPolicy = {
+    requireAuthentication: options?.requireAuthentication === true,
+    invalidateOnEnrollmentChange: options?.invalidateOnEnrollmentChange === true,
+    ...(options?.authenticationPrompt !== undefined && {
+      authenticationPrompt: options.authenticationPrompt,
+    }),
+  };
+  return IoReactNativeCrypto.generate(keyTag, normalizedOptions);
 }
 
 /**
@@ -208,6 +282,12 @@ export function deleteKey(keyTag: string): Promise<void> {
 /**
  * This function signs the provided `message`
  * with the private key associated with the provided `keyTag`.
+ *
+ * If the key was generated with `requireAuthentication: true`
+ * (see {@link KeyAuthenticationPolicy}), the OS presents its
+ * authentication prompt (biometric with device PIN/passcode fallback)
+ * and the promise resolves only after a successful authentication.
+ * A dismissed prompt rejects with the `USER_CANCELED` error code.
  *
  * If it is not possible to sign, the promise is rejected providing an
  * instance of {@link CryptoError}.

@@ -1,3 +1,5 @@
+import LocalAuthentication
+
 @objc(IoReactNativeCrypto)
 class IoReactNativeCrypto: NSObject {
   private typealias ME = ModuleException
@@ -43,12 +45,14 @@ class IoReactNativeCrypto: NSObject {
     }
   }
 
-  @objc(generate:withResolver:withRejecter:)
+  @objc(generate:withOptions:withResolver:withRejecter:)
   func generate(
     keyTag: String,
+    options: NSDictionary?,
     resolve:@escaping RCTPromiseResolveBlock,
     reject:@escaping RCTPromiseRejectBlock
   ) -> Void {
+    let policy = KeyAuthenticationPolicy(fromOptions: options)
     // https://reactnative.dev/docs/native-modules-ios#threading
     //
     // If only one of your methods is long-running
@@ -68,8 +72,17 @@ class IoReactNativeCrypto: NSObject {
         return
       }
 
+      // An authentication-gated key is created with the
+      // kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly protection class:
+      // without a device passcode its creation would fail with an opaque
+      // error, so fail upfront with a meaningful one.
+      if policy.requireAuthentication && !self.isDevicePasscodeSet() {
+        ME.passcodeNotSet.reject(reject: reject)
+        return
+      }
+
       do {
-        privateKey = try self.generatePrivateKey(keyTag: keyTag)
+        privateKey = try self.generatePrivateKey(keyTag: keyTag, policy: policy)
       } catch {
         ME.wrongKeyConfiguration.reject(reject: reject)
         return
@@ -176,28 +189,48 @@ class IoReactNativeCrypto: NSObject {
     ME.unsupportedDevice.reject(reject: reject)
   }
 
-  private func generatePrivateKey(keyTag: String) throws -> SecKey? {
+  private func generatePrivateKey(
+    keyTag: String,
+    policy: KeyAuthenticationPolicy
+  ) throws -> SecKey? {
     var error: Unmanaged<CFError>?
 
     // Key ACL
+    // Gated keys require a device passcode to be set and a fresh user
+    // authentication (biometry with passcode fallback) on every key usage.
+    // Ungated keys keep the original, authentication-free configuration.
+    let protection: CFString = policy.requireAuthentication
+      ? kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+      : kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    let flags: SecAccessControlCreateFlags = policy.requireAuthentication
+      ? policy.accessControlFlags()
+      : .privateKeyUsage // signing and verification
     guard let access = SecAccessControlCreateWithFlags(
       kCFAllocatorDefault,
-      kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-      .privateKeyUsage, // signing and verification
+      protection,
+      flags,
       &error
     ) else {
       throw error!.takeRetainedValue() as Error
     }
 
     // Key Attributes
+    let privateKeyAttrs: NSMutableDictionary = [
+      kSecAttrIsPermanent: true,
+      kSecAttrApplicationTag: keyTag.data(using: .utf8)!,
+      kSecAttrAccessControl: access
+    ]
+
+    // Persist the authentication prompt title within the keychain item so
+    // that the sign operation can present it as the authentication reason.
+    if policy.requireAuthentication, let promptTitle = policy.promptTitle {
+      privateKeyAttrs[kSecAttrLabel] = promptTitle
+    }
+
     let attributes: NSMutableDictionary = [
       kSecAttrKeyType: keyConfig.keyType(),
       kSecAttrKeySizeInBits: keyConfig.keySizeInBits(),
-      kSecPrivateKeyAttrs: [
-        kSecAttrIsPermanent: true,
-        kSecAttrApplicationTag: keyTag.data(using: .utf8)!,
-        kSecAttrAccessControl: access
-      ]
+      kSecPrivateKeyAttrs: privateKeyAttrs
     ]
 
     if keyConfig == .ec {
@@ -208,6 +241,15 @@ class IoReactNativeCrypto: NSObject {
       throw error!.takeRetainedValue() as Error
     }
     return key
+  }
+
+  /// A device passcode is the minimum requirement to create and use an
+  /// authentication-gated key (biometry alone is not enough as the
+  /// passcode acts as its fallback).
+  private func isDevicePasscodeSet() -> Bool {
+    return LAContext().canEvaluatePolicy(
+      .deviceOwnerAuthentication, error: nil
+    )
   }
 
   /// For an elliptic curve public key, the format follows the ANSI X9.63 standard using a byte string of 04 || X || Y
@@ -279,9 +321,23 @@ class IoReactNativeCrypto: NSObject {
         ME.invalidUTF8Encoding.reject(reject: reject)
         return
       }
+      // For authentication-gated keys the system presents its
+      // authentication UI during SecKeyCreateSignature. The LAContext
+      // below only customizes that prompt with the reason persisted at
+      // generation time; it is ignored by keys that require no
+      // authentication. Signing stays on a background queue as the
+      // prompt is modal and blocks until dismissed.
+      let context = LAContext()
+      if #available(iOS 11.0, *),
+         let promptTitle = self.keyAuthenticationPromptTitle(keyTag: keyTag),
+         !promptTitle.isEmpty {
+        context.localizedReason = promptTitle
+      }
       let key: SecKey?
       let status: OSStatus
-      (key, status) = self.keyExists(keyTag: keyTag)
+      (key, status) = self.keyExists(
+        keyTag: keyTag, authenticationContext: context
+      )
       guard let key = key, status == errSecSuccess else {
         ME.publicKeyNotFound.reject(reject: reject)
         return
@@ -293,7 +349,7 @@ class IoReactNativeCrypto: NSObject {
         self.keyConfig.keySignAlgorithm()
       )
       guard let signature = signature, error == nil else {
-        ME.unableToSign.reject(
+        self.signErrorException(error).reject(
           reject: reject,
           ("error", error?.localizedDescription ?? "")
         )
@@ -306,6 +362,83 @@ class IoReactNativeCrypto: NSObject {
         )
       )
     }
+  }
+
+  /// Maps errors raised by `SecKeyCreateSignature` to module exceptions,
+  /// translating the user-authentication outcomes (cancel, failure,
+  /// missing biometry/passcode) raised by gated keys.
+  private func signErrorException(_ error: Error?) -> ModuleException {
+    guard let nsError = error as NSError? else {
+      return .unableToSign
+    }
+
+    var laError: NSError?
+    if nsError.domain == LAErrorDomain {
+      laError = nsError
+    } else if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+              underlyingError.domain == LAErrorDomain {
+      laError = underlyingError
+    }
+
+    if let laError = laError {
+      switch laError.code {
+      case LAError.userCancel.rawValue,
+        LAError.systemCancel.rawValue,
+        LAError.appCancel.rawValue:
+        return .userCanceled
+      case LAError.authenticationFailed.rawValue:
+        return .authFailed
+      case LAError.passcodeNotSet.rawValue:
+        return .passcodeNotSet
+      default:
+        break
+      }
+      if #available(iOS 11.0, *) {
+        switch laError.code {
+        case LAError.biometryNotAvailable.rawValue,
+          LAError.biometryNotEnrolled.rawValue,
+          LAError.biometryLockout.rawValue:
+          return .biometricsNotAvailable
+        default:
+          break
+        }
+      }
+      return .authFailed
+    }
+
+    if nsError.domain == NSOSStatusErrorDomain {
+      switch nsError.code {
+      case Int(errSecUserCanceled):
+        return .userCanceled
+      case Int(errSecAuthFailed):
+        return .authFailed
+      case Int(errSecInteractionNotAllowed):
+        return .userNotAuthenticated
+      default:
+        break
+      }
+    }
+
+    return .unableToSign
+  }
+
+  /// Reads the authentication prompt title persisted in the keychain item
+  /// label at generation time. Attributes are metadata: retrieving them
+  /// does not trigger any user authentication.
+  private func keyAuthenticationPromptTitle(keyTag: String) -> String? {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassKey,
+      kSecAttrApplicationTag as String: keyTag,
+      kSecAttrKeyType as String: keyConfig.keyType(),
+      kSecReturnAttributes as String: true
+    ]
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    guard status == errSecSuccess,
+          let attributes = item as? [String: Any] else {
+      return nil
+    }
+    return attributes[kSecAttrLabel as String] as? String
   }
 
   private func signData(
@@ -326,8 +459,18 @@ class IoReactNativeCrypto: NSObject {
   }
 
   // https://developer.apple.com/documentation/security/certificate_key_and_trust_services/keys/storing_keys_in_the_keychain
-  private func keyExists(keyTag: String) -> (key: SecKey?, status: OSStatus) {
-    let getQuery = privateKeyKeychainQuery(keyTag: keyTag)
+  //
+  // When an authentication context is provided, the returned key reference
+  // is bound to it: any subsequent operation requiring user authentication
+  // (e.g. signing with a gated key) is evaluated through that context.
+  private func keyExists(
+    keyTag: String,
+    authenticationContext: LAContext? = nil
+  ) -> (key: SecKey?, status: OSStatus) {
+    var getQuery = privateKeyKeychainQuery(keyTag: keyTag)
+    if let authenticationContext = authenticationContext {
+      getQuery[kSecUseAuthenticationContext as String] = authenticationContext
+    }
     var item: CFTypeRef?
     let status = SecItemCopyMatching(getQuery as CFDictionary, &item)
     return (status == errSecSuccess ? (item as! SecKey) : nil, status)
@@ -342,6 +485,37 @@ class IoReactNativeCrypto: NSObject {
       kSecAttrKeyType as String: keyConfig.keyType(),
       kSecReturnRef as String: true
     ]
+  }
+
+  /// Authentication policy applied to a key pair at generation time,
+  /// parsed from the options dictionary provided by the JS layer.
+  private struct KeyAuthenticationPolicy {
+    let requireAuthentication: Bool
+    let invalidateOnEnrollmentChange: Bool
+    let promptTitle: String?
+
+    init(fromOptions options: NSDictionary?) {
+      requireAuthentication =
+        options?["requireAuthentication"] as? Bool ?? false
+      invalidateOnEnrollmentChange =
+        options?["invalidateOnEnrollmentChange"] as? Bool ?? false
+      promptTitle =
+        (options?["authenticationPrompt"] as? NSDictionary)?["title"] as? String
+    }
+
+    /// Access control flags gating every key usage behind a fresh user
+    /// authentication, satisfiable by biometry OR the device passcode.
+    func accessControlFlags() -> SecAccessControlCreateFlags {
+      if invalidateOnEnrollmentChange, #available(iOS 11.3, *) {
+        // Restrict the biometric constraint to the currently enrolled
+        // set (a biometric enrollment change invalidates it) while the
+        // passcode constraint keeps the key usable.
+        return [.privateKeyUsage, .biometryCurrentSet, .or, .devicePasscode]
+      }
+      // .userPresence = biometry with automatic passcode fallback,
+      // unaffected by biometric enrollment changes.
+      return [.privateKeyUsage, .userPresence]
+    }
   }
 
   /// On iOS we support only EC but we put all EC config in an enum
@@ -382,6 +556,11 @@ class IoReactNativeCrypto: NSObject {
     case unableToSign = "UNABLE_TO_SIGN"
     case threadingError = "THREADING_ERROR"
     case certificatesValidationError = "CERTIFICATE_CHAIN_VALIDATION_ERROR"
+    case userCanceled = "USER_CANCELED"
+    case userNotAuthenticated = "USER_NOT_AUTHENTICATED"
+    case authFailed = "AUTH_FAILED"
+    case biometricsNotAvailable = "BIOMETRICS_NOT_AVAILABLE"
+    case passcodeNotSet = "PASSCODE_NOT_SET"
 
     func error(userInfo: [String : Any]? = nil) -> NSError {
       switch self {
@@ -404,6 +583,9 @@ class IoReactNativeCrypto: NSObject {
       case .threadingError:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       case .certificatesValidationError:
+        return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
+      case .userCanceled, .userNotAuthenticated, .authFailed,
+        .biometricsNotAvailable, .passcodeNotSet:
         return NSError(domain: self.rawValue, code: -1, userInfo: userInfo)
       }
     }
