@@ -72,12 +72,14 @@ class IoReactNativeCrypto: NSObject {
         return
       }
 
-      // An authentication-gated key is created with the
-      // kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly protection class:
-      // without a device passcode its creation would fail with an opaque
-      // error, so fail upfront with a meaningful one.
-      if policy.requireAuthentication && !self.isDevicePasscodeSet() {
-        ME.passcodeNotSet.reject(reject: reject)
+      // The biometric gate needs an enrolled biometry, and the
+      // kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly protection class
+      // needs a device passcode: without them key creation would fail
+      // with an opaque error (or produce an unusable key), so fail
+      // upfront with a meaningful one.
+      if policy.requireAuthentication,
+         let availabilityError = self.biometricGateUnavailabilityError() {
+        availabilityError.reject(reject: reject)
         return
       }
 
@@ -196,8 +198,10 @@ class IoReactNativeCrypto: NSObject {
     var error: Unmanaged<CFError>?
 
     // Key ACL
-    // Gated keys require a device passcode to be set and a fresh user
-    // authentication (biometry with passcode fallback) on every key usage.
+    // Gated keys require a device passcode to be set (the key is deleted
+    // by the system when the passcode is removed) and a fresh BIOMETRIC
+    // authentication on every key usage — deliberately with no passcode
+    // fallback, which would bypass biometric enrollment invalidation.
     // Ungated keys keep the original, authentication-free configuration.
     let protection: CFString = policy.requireAuthentication
       ? kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
@@ -243,13 +247,23 @@ class IoReactNativeCrypto: NSObject {
     return key
   }
 
-  /// A device passcode is the minimum requirement to create and use an
-  /// authentication-gated key (biometry alone is not enough as the
-  /// passcode acts as its fallback).
-  private func isDevicePasscodeSet() -> Bool {
-    return LAContext().canEvaluatePolicy(
-      .deviceOwnerAuthentication, error: nil
-    )
+  /// Checks that the biometric-only gate can be satisfied on this device,
+  /// returning the exception to reject with when it cannot:
+  /// - no device passcode (also a prerequisite for biometry and for the
+  ///   WhenPasscodeSetThisDeviceOnly protection class) -> PASSCODE_NOT_SET
+  /// - biometry absent, not enrolled or disabled -> BIOMETRICS_NOT_AVAILABLE
+  private func biometricGateUnavailabilityError() -> ModuleException? {
+    var error: NSError?
+    if LAContext().canEvaluatePolicy(
+      .deviceOwnerAuthenticationWithBiometrics, error: &error
+    ) {
+      return nil
+    }
+    if let error = error, error.domain == LAErrorDomain,
+       error.code == LAError.passcodeNotSet.rawValue {
+      return .passcodeNotSet
+    }
+    return .biometricsNotAvailable
   }
 
   /// For an elliptic curve public key, the format follows the ANSI X9.63 standard using a byte string of 04 || X || Y
@@ -503,18 +517,24 @@ class IoReactNativeCrypto: NSObject {
         (options?["authenticationPrompt"] as? NSDictionary)?["title"] as? String
     }
 
-    /// Access control flags gating every key usage behind a fresh user
-    /// authentication, satisfiable by biometry OR the device passcode.
+    /// Access control flags gating every key usage behind a fresh
+    /// BIOMETRIC authentication. The device passcode is intentionally
+    /// not accepted: a passcode fallback would keep the key usable after
+    /// a biometric enrollment change, defeating
+    /// `invalidateOnEnrollmentChange`.
     func accessControlFlags() -> SecAccessControlCreateFlags {
-      if invalidateOnEnrollmentChange, #available(iOS 11.3, *) {
-        // Restrict the biometric constraint to the currently enrolled
-        // set (a biometric enrollment change invalidates it) while the
-        // passcode constraint keeps the key usable.
-        return [.privateKeyUsage, .biometryCurrentSet, .or, .devicePasscode]
+      if #available(iOS 11.3, *) {
+        // biometryCurrentSet binds the key to the currently enrolled
+        // biometric set: any enrollment change invalidates it.
+        // biometryAny keeps the key usable across enrollment changes.
+        return invalidateOnEnrollmentChange
+          ? [.privateKeyUsage, .biometryCurrentSet]
+          : [.privateKeyUsage, .biometryAny]
       }
-      // .userPresence = biometry with automatic passcode fallback,
-      // unaffected by biometric enrollment changes.
-      return [.privateKeyUsage, .userPresence]
+      // Pre-11.3 names of the same flags (identical raw values).
+      return invalidateOnEnrollmentChange
+        ? [.privateKeyUsage, .touchIDCurrentSet]
+        : [.privateKeyUsage, .touchIDAny]
     }
   }
 

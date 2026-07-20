@@ -23,14 +23,19 @@ try {
 }
 ```
 
-### Generate a key gated by user authentication (biometric / device PIN)
+### Generate a key gated by biometric authentication
 
 `generate` optionally accepts a `KeyAuthenticationPolicy`. With
 `requireAuthentication: true`, **every** `sign` operation with the key requires
-a fresh user authentication: biometric, with device credential
-(PIN/pattern/password) fallback. The requirement is enforced by the OS key
-store itself (iOS Secure Enclave access control / Android Keystore
+a fresh **biometric** user authentication. The requirement is enforced by the
+OS key store itself (iOS Secure Enclave access control / Android Keystore
 user-authentication binding), not by an app-level check.
+
+The gate is deliberately **biometric-only, with no device PIN/passcode
+fallback**: on both platforms a key usable with the device credential is
+exempted from biometric enrollment invalidation (iOS `biometryCurrentSet`
+access control / Android `setInvalidatedByBiometricEnrollment`), so a
+passcode fallback would defeat `invalidateOnEnrollmentChange`.
 
 ```ts
 import { generate } from '@pagopa/io-react-native-crypto';
@@ -49,33 +54,34 @@ const result = await generate('PERSONAL_KEYTAG', {
 When `options` is omitted (or `requireAuthentication` is `false`) the behavior
 is exactly the same as before: the key is usable without any authentication.
 `sign` keeps its usual signature; when the referenced key is gated the system
-authentication prompt is presented automatically.
+biometric prompt is presented automatically.
 
 Per-platform behavior:
 
 - **iOS**: the key is created in the Secure Enclave with the
   `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` protection class and a
-  `userPresence` access control: Face ID / Touch ID with automatic "Enter
-  Passcode" fallback. If the device passcode is removed, the key is deleted by
-  the system. With `invalidateOnEnrollmentChange: true`, a biometric
-  enrollment change invalidates only the biometric constraint and the key
-  stays usable via passcode.
+  biometric access control: `biometryAny` by default, or
+  `biometryCurrentSet` with `invalidateOnEnrollmentChange: true`, which
+  binds the key to the biometric set enrolled at generation time (any
+  enrollment change makes signing fail). If the device passcode is removed,
+  the key is deleted by the system.
 - **Android**: the key is generated with
-  `setUserAuthenticationRequired(true)` and per-operation validity. On
-  **API 30+** authentication is satisfied by a strong biometric **or** the
-  device credential. On **API 23–29** crypto-bound authentication is
-  **biometric-only** (no PIN fallback, an enrolled strong biometric is
-  required to generate the key). `sign` presents an `androidx.biometric`
-  `BiometricPrompt`, which requires the host activity to be a
-  `FragmentActivity` (React Native's `ReactActivity` is one). With
-  `invalidateOnEnrollmentChange: true`, an enrollment change makes the key
-  **permanently** unusable. On devices where StrongBox does not support
-  authentication-bound keys, generation automatically falls back to the TEE.
+  `setUserAuthenticationRequired(true)`, per-operation validity and
+  `AUTH_BIOMETRIC_STRONG` (API 30+; on API 23-29 the deprecated per-use
+  equivalent is used). `sign` presents an `androidx.biometric`
+  `BiometricPrompt` restricted to strong biometrics, which requires the host
+  activity to be a `FragmentActivity` (React Native's `ReactActivity` is
+  one). With `invalidateOnEnrollmentChange: true`, an enrollment change makes
+  the key **permanently** unusable. On devices where StrongBox does not
+  support authentication-bound keys, generation automatically falls back to
+  the TEE.
 
 Requirements and caveats:
 
 - A device PIN/passcode must be set, otherwise generation rejects with
   `PASSCODE_NOT_SET` (an unprotected key is never created).
+- A (strong) biometric must be enrolled, otherwise generation rejects with
+  `BIOMETRICS_NOT_AVAILABLE`.
 - A canceled prompt rejects `sign` with `USER_CANCELED`.
 - On iOS, add `NSFaceIDUsageDescription` to your app's `Info.plist`,
   otherwise Face ID authentication is not available for gated keys.

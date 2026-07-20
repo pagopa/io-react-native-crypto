@@ -69,7 +69,7 @@ export default function App() {
             marginBottom: 8,
           }}
         >
-          <Text>Require authentication (biometric / PIN) on create</Text>
+          <Text>Require biometric authentication on create</Text>
           <Switch
             value={requireAuthentication}
             onValueChange={setRequireAuthentication}

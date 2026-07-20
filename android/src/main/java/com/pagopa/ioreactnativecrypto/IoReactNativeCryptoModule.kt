@@ -79,12 +79,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
   }
 
   /**
-   * Checks that the device credentials required by an
-   * authentication-gated key are enrolled, rejecting the promise if not:
-   * - A device PIN/pattern/password is the baseline on every API level.
-   * - On API < 30 per-use authentication is enforceable only through a
-   *   (strong) biometric bound to the crypto operation, so an enrolled
-   *   biometric is also required there.
+   * Checks that the biometric-only gate of an authentication-gated key
+   * can be satisfied on this device, rejecting the promise if not:
+   * - A device PIN/pattern/password is the baseline (biometrics cannot
+   *   be enrolled without one) -> PASSCODE_NOT_SET.
+   * - An enrolled strong biometric is required: the gate is crypto-bound
+   *   biometric authentication with no device credential fallback
+   *   -> BIOMETRICS_NOT_AVAILABLE.
    */
   @RequiresApi(Build.VERSION_CODES.M)
   private fun canAuthenticateForKeyUse(promise: Promise): Boolean {
@@ -94,16 +95,14 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
       ModuleException.PASSCODE_NOT_SET.reject(promise)
       return false
     }
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-      val canAuthenticate = BiometricManager.from(reactApplicationContext)
-        .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-      if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
-        ModuleException.BIOMETRICS_NOT_AVAILABLE.reject(
-          promise,
-          Pair(ERROR_USER_INFO_KEY, "canAuthenticate=$canAuthenticate")
-        )
-        return false
-      }
+    val canAuthenticate = BiometricManager.from(reactApplicationContext)
+      .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+    if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+      ModuleException.BIOMETRICS_NOT_AVAILABLE.reject(
+        promise,
+        Pair(ERROR_USER_INFO_KEY, "canAuthenticate=$canAuthenticate")
+      )
+      return false
     }
     return true
   }
@@ -216,11 +215,11 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
    * Builds the [KeyGenParameterSpec] for a signing key pair.
    *
    * When [KeyAuthenticationPolicy.requireAuthentication] is set, key usage
-   * is bound by the keystore to a per-operation user authentication:
-   * - API 30+: authentication is satisfied by a strong biometric OR the
-   *   device credential (PIN/pattern/password).
-   * - API 23-29: per-operation authentication can only be biometric
-   *   (crypto-bound device credential authentication requires API 30).
+   * is bound by the keystore to a per-operation STRONG BIOMETRIC
+   * authentication. The device credential (PIN/pattern/password) is
+   * intentionally not accepted: keys usable with the device credential
+   * are exempted from biometric enrollment invalidation, which would
+   * defeat [KeyAuthenticationPolicy.invalidateOnEnrollmentChange].
    */
   @RequiresApi(Build.VERSION_CODES.M)
   private fun buildKeyGenParameterSpec(
@@ -261,7 +260,7 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
           setUserAuthenticationParameters(
             0, // 0s validity ⇒ authentication required for every use
-            AUTH_BIOMETRIC_STRONG or AUTH_DEVICE_CREDENTIAL
+            AUTH_BIOMETRIC_STRONG
           )
         } else {
           // -1 ⇒ authentication required for every use, biometric-only.
@@ -675,9 +674,9 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
    * Signs [message] with an authentication-gated [privateKey]:
    * the [Signature] initialized with the key is wrapped in a
    * [BiometricPrompt.CryptoObject] and authorized by the keystore only
-   * upon a successful user authentication (biometric on every API level,
-   * device credential too on API 30+). Called from the module worker
-   * thread; the prompt itself must be shown from the UI thread.
+   * upon a successful STRONG BIOMETRIC authentication (no device
+   * credential fallback). Called from the module worker thread; the
+   * prompt itself must be shown from the UI thread.
    *
    * The promise is settled exactly once, from the prompt callbacks.
    */
@@ -765,20 +764,13 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
         val promptInfo = BiometricPrompt.PromptInfo.Builder().apply {
           setTitle(promptTitle)
           promptSubtitle?.let { setSubtitle(it) }
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            setAllowedAuthenticators(
-              BiometricManager.Authenticators.BIOMETRIC_STRONG
-                or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
-          } else {
-            // Crypto-bound device credential authentication requires
-            // API 30+. A negative button is mandatory whenever
-            // DEVICE_CREDENTIAL is not allowed.
-            setAllowedAuthenticators(
-              BiometricManager.Authenticators.BIOMETRIC_STRONG
-            )
-            setNegativeButtonText(promptCancel)
-          }
+          // Biometric-only gate, matching the key spec: DEVICE_CREDENTIAL
+          // is not allowed (it would be exempted from enrollment
+          // invalidation), and a negative button is mandatory without it.
+          setAllowedAuthenticators(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG
+          )
+          setNegativeButtonText(promptCancel)
         }.build()
         biometricPrompt.authenticate(promptInfo, cryptoObject)
       } catch (e: Exception) {

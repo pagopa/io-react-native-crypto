@@ -88,14 +88,18 @@ export type PublicKey = ECKey | RSAKey;
  *
  * When {@link KeyAuthenticationPolicy["requireAuthentication"]} is `true`,
  * every {@link sign} operation performed with the key requires a fresh
- * user authentication (biometric, with device PIN/passcode fallback).
- * The requirement is enforced by the OS key store (iOS Secure Enclave
- * access control / Android Keystore user-authentication binding), not by
- * an app-level check.
+ * BIOMETRIC user authentication. The requirement is enforced by the OS
+ * key store (iOS Secure Enclave access control / Android Keystore
+ * user-authentication binding), not by an app-level check.
+ *
+ * The gate is deliberately biometric-only: a device PIN/passcode fallback
+ * would exempt the key from biometric enrollment invalidation on both
+ * platforms, defeating
+ * {@link KeyAuthenticationPolicy["invalidateOnEnrollmentChange"]}.
  */
 export type KeyAuthenticationPolicy = {
   /**
-   * Require biometric-or-device-credential authentication to USE the key.
+   * Require biometric authentication to USE the key.
    * Defaults to `false` (key usable without authentication, as before).
    */
   requireAuthentication?: boolean;
@@ -107,18 +111,16 @@ export type KeyAuthenticationPolicy = {
     title?: string;
     /** Subtitle of the prompt. Android only. */
     subtitle?: string;
-    /** Negative-button text. Android only, shown when the device credential fallback is not offered by the prompt itself. */
+    /** Negative-button (cancel) text of the biometric prompt. Android only. */
     cancel?: string;
   };
   /**
-   * If `true`, the key is invalidated when the biometric enrollment changes
-   * (e.g. a new fingerprint or face is enrolled).
-   * Defaults to `false`: on iOS the key stays usable via biometrics or passcode,
-   * on Android the key is not invalidated by enrollment changes.
-   *
-   * Note: on Android an invalidated key becomes permanently unusable, while on
-   * iOS only the biometric constraint is invalidated and the key remains
-   * usable through the device passcode.
+   * If `true`, the key becomes unusable when the biometric enrollment
+   * changes (e.g. a new fingerprint or face is enrolled): on iOS the key
+   * is bound to the biometric set enrolled at generation time, on Android
+   * the key is permanently invalidated by the keystore.
+   * Defaults to `false`: the key stays usable, including with newly
+   * enrolled biometrics.
    */
   invalidateOnEnrollmentChange?: boolean;
 };
@@ -232,15 +234,15 @@ export function getPublicKeyFixed(keyTag: string): Promise<PublicKey> {
  * Optionally the key can be gated behind user authentication by providing
  * an {@link KeyAuthenticationPolicy} with `requireAuthentication: true`:
  * every subsequent {@link sign} call with the key then requires a fresh
- * biometric (or device PIN/passcode) authentication, enforced by the OS
- * key store. When `options` is omitted the behavior is unchanged.
+ * biometric authentication (no device PIN/passcode fallback), enforced
+ * by the OS key store. When `options` is omitted the behavior is
+ * unchanged.
  *
  * Requirements for authenticated keys:
  * - a device PIN/passcode must be set, otherwise the promise is rejected
  *   with the `PASSCODE_NOT_SET` error code;
- * - on Android API 23-29 the per-use authentication is biometric only,
- *   so an enrolled (strong) biometric is required. The combined
- *   biometric-or-device-credential gate requires Android API 30+.
+ * - a (strong) biometric must be enrolled, otherwise the promise is
+ *   rejected with the `BIOMETRICS_NOT_AVAILABLE` error code.
  *
  * If it is not possible to generate the key, the promise is rejected providing an
  * instance of {@link CryptoError}.
@@ -284,9 +286,9 @@ export function deleteKey(keyTag: string): Promise<void> {
  * with the private key associated with the provided `keyTag`.
  *
  * If the key was generated with `requireAuthentication: true`
- * (see {@link KeyAuthenticationPolicy}), the OS presents its
- * authentication prompt (biometric with device PIN/passcode fallback)
- * and the promise resolves only after a successful authentication.
+ * (see {@link KeyAuthenticationPolicy}), the OS presents its biometric
+ * authentication prompt and the promise resolves only after a
+ * successful authentication.
  * A dismissed prompt rejects with the `USER_CANCELED` error code.
  *
  * If it is not possible to sign, the promise is rejected providing an
