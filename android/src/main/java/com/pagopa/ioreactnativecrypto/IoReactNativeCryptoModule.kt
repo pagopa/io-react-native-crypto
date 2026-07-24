@@ -698,7 +698,8 @@ class IoReactNativeCryptoModule(reactContext: ReactApplicationContext) :
     signatureEngine.initSign(privateKey)
     val cryptoObject = BiometricPrompt.CryptoObject(signatureEngine)
 
-    val fragmentActivity = currentActivity as? FragmentActivity
+    val fragmentActivity =
+      reactApplicationContext.currentActivity as? FragmentActivity
     if (fragmentActivity == null) {
       // BiometricPrompt can only be attached to a FragmentActivity
       // (ReactActivity is one). Without it no prompt can be shown.
