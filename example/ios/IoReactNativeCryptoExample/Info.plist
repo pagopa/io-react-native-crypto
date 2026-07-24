@@ -24,6 +24,8 @@
     <string>1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Face ID is used to authorize signing with authentication-gated keys.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
       <!-- Do not change NSAllowsArbitraryLoads to true, or you will risk app rejection! -->

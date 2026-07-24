@@ -3,6 +3,7 @@
 @interface RCT_EXTERN_MODULE(IoReactNativeCrypto, NSObject)
 
 RCT_EXTERN_METHOD(generate:(NSString*)keyTag
+                  withOptions:(NSDictionary*)options
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 

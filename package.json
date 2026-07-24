@@ -14,6 +14,7 @@
     "ios",
     "cpp",
     "*.podspec",
+    "app.plugin.js",
     "!lib/typescript/example",
     "!ios/build",
     "!android/build",
@@ -38,6 +39,7 @@
   },
   "keywords": [
     "react-native",
+    "expo",
     "ios",
     "android"
   ],
@@ -74,8 +76,14 @@
     "typescript": "5.0.4"
   },
   "peerDependencies": {
+    "expo": "*",
     "react": "*",
     "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    }
   },
   "jest": {
     "preset": "react-native",

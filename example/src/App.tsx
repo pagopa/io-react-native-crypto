@@ -7,6 +7,7 @@ import {
   TextInput,
   Button,
   ScrollView,
+  Switch,
 } from 'react-native';
 import {
   CryptoError,
@@ -23,6 +24,21 @@ import {
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
   const [keyTag, setKeyTag] = React.useState<string>('key');
+  const [requireAuthentication, setRequireAuthentication] =
+    React.useState<boolean>(false);
+
+  const logPromiseResult = (method: string, promise: Promise<unknown>) => {
+    promise
+      .then((value) => {
+        const text = `${method}: ${value === undefined ? 'true' : JSON.stringify(value)}`;
+        console.log(text);
+        setLogText(text);
+      })
+      .catch((reason: CryptoError) => {
+        console.log(method, reason);
+        setLogText(`${method}: ${reason}`);
+      });
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, padding: 20 }}>
@@ -48,6 +64,20 @@ export default function App() {
         <View
           style={{
             flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}
+        >
+          <Text>Require biometric authentication on create</Text>
+          <Switch
+            value={requireAuthentication}
+            onValueChange={setRequireAuthentication}
+          />
+        </View>
+        <View
+          style={{
+            flexDirection: 'row',
             justifyContent: 'space-between',
           }}
         >
@@ -55,121 +85,84 @@ export default function App() {
             <Button
               title="sign"
               onPress={() => {
-                sign("Ceci n'est pas une nonce", keyTag)
-                  .then((value) => {
-                    console.log(JSON.stringify(value));
-                    setLogText(JSON.stringify(value));
-                  })
-                  .catch((reason: CryptoError) => {
-                    console.log(reason);
-                    setLogText(`${reason}`);
-                  });
+                logPromiseResult(
+                  'sign',
+                  sign("Ceci n'est pas une nonce", keyTag)
+                );
               }}
             />
             <Button
               title="get"
               onPress={() => {
-                getPublicKey(keyTag)
-                  .then((value) => {
-                    console.log(JSON.stringify(value));
-                    setLogText(JSON.stringify(value));
-                  })
-                  .catch((reason: CryptoError) => {
-                    console.log(reason);
-                    setLogText(`${reason}`);
-                  });
+                logPromiseResult('getPublicKey', getPublicKey(keyTag));
               }}
             />
             <Button
               title="getFixed"
               onPress={() => {
-                getPublicKeyFixed(keyTag)
-                  .then((value) => {
-                    console.log(JSON.stringify(value));
-                    setLogText(JSON.stringify(value));
-                  })
-                  .catch((reason: CryptoError) => {
-                    console.log(reason);
-                    setLogText(`${reason}`);
-                  });
+                logPromiseResult('getPublicKeyFixed', getPublicKeyFixed(keyTag));
               }}
             />
             <Button
               title="create"
               onPress={() => {
-                generate(keyTag)
-                  .then((value) => {
-                    console.log(JSON.stringify(value));
-                    setLogText(JSON.stringify(value));
-                  })
-                  .catch((reason: CryptoError) => {
-                    console.log(reason);
-                    setLogText(`${reason}`);
-                  });
+                logPromiseResult(
+                  'generate',
+                  generate(
+                    keyTag,
+                    requireAuthentication
+                      ? {
+                          requireAuthentication: true,
+                          authenticationPrompt: {
+                            title: 'Confirm signing',
+                            subtitle: `Authenticate to use the key "${keyTag}"`,
+                            cancel: 'Cancel',
+                          },
+                        }
+                      : undefined
+                  )
+                );
               }}
             />
             <Button
               title="delete"
               onPress={() => {
-                deleteKey(keyTag)
-                  .then(() => {
-                    console.log('true');
-                    setLogText('true');
-                  })
-                  .catch((reason: CryptoError) => {
-                    console.log(reason);
-                    setLogText(`${reason}`);
-                  });
+                logPromiseResult('delete', deleteKey(keyTag));
               }}
             />
             <Button
               title="isKeyStrongboxBacked"
               onPress={() => {
-                isKeyStrongboxBacked(keyTag)
-                  .then((result) => {
-                    console.log(result);
-                    setLogText(result ? 'true' : 'false');
-                  })
-                  .catch((reason: CryptoError) => {
-                    console.log(reason);
-                    setLogText(`${reason}`);
-                  });
+                logPromiseResult(
+                  'isKeyStrongboxBacked',
+                  isKeyStrongboxBacked(keyTag)
+                );
               }}
             />
             <Button
               title="verifyCertificatesWithCRL"
               onPress={() => {
-                verifyCertificateChain(mockCertificateChainReal.x5c, mockCertificateChainReal.trustAnchorCert, {
-                  connectTimeout: 10000,
-                  readTimeout: 10000,
-                  requireCrl: true
-                })
-                  .then((result) => {
-                    console.log(result);
-                    setLogText(JSON.stringify(result));
+                logPromiseResult(
+                  'verifyCertificatesWithCRL',
+                  verifyCertificateChain(mockCertificateChainReal.x5c, mockCertificateChainReal.trustAnchorCert, {
+                    connectTimeout: 10000,
+                    readTimeout: 10000,
+                    requireCrl: true
                   })
-                  .catch((reason: CryptoError) => {
-                    console.log(reason);
-                    setLogText(`${reason}`);
-                  })
+                )
               }}
             />
             <Button
               title="verifyCertificatesNoCRL"
               onPress={() => {
-                verifyCertificateChain(mockCertNoCrl.x5c, mockCertNoCrl.trustAnchorCert, {
-                  connectTimeout: 10000,
-                  readTimeout: 10000,
-                  requireCrl: false
-                })
-                  .then((result) => {
-                    console.log(result);
-                    setLogText(JSON.stringify(result));
+                logPromiseResult(
+                  'verifyCertificatesNoCRL',
+                  verifyCertificateChain(mockCertNoCrl.x5c, mockCertNoCrl.trustAnchorCert, {
+                    connectTimeout: 10000,
+                    readTimeout: 10000,
+                    requireCrl: false
                   })
-                  .catch((reason: CryptoError) => {
-                    console.log(reason);
-                    setLogText(`${reason}`);
-                  })
+                )
               }}
             />
           </ScrollView>

@@ -23,6 +23,71 @@ try {
 }
 ```
 
+### Generate a key gated by biometric authentication
+
+`generate` optionally accepts a `KeyAuthenticationPolicy`. With
+`requireAuthentication: true`, **every** `sign` operation with the key requires
+a fresh **biometric** user authentication. The requirement is enforced by the
+OS key store itself (iOS Secure Enclave access control / Android Keystore
+user-authentication binding), not by an app-level check.
+
+The gate is deliberately **biometric-only, with no device PIN/passcode
+fallback**: on both platforms a key usable with the device credential is
+exempted from biometric enrollment invalidation (iOS `biometryCurrentSet`
+access control / Android `setInvalidatedByBiometricEnrollment`), so a
+passcode fallback would defeat `invalidateOnEnrollmentChange`.
+
+```ts
+import { generate } from '@pagopa/io-react-native-crypto';
+
+const result = await generate('PERSONAL_KEYTAG', {
+  requireAuthentication: true,
+  authenticationPrompt: {
+    title: 'Confirm signing', // prompt title (iOS reason / Android title)
+    subtitle: 'Authenticate to use the key', // Android only
+    cancel: 'Cancel', // Android only, negative-button text
+  },
+  // invalidateOnEnrollmentChange: true, // see note below
+});
+```
+
+When `options` is omitted (or `requireAuthentication` is `false`) the behavior
+is exactly the same as before: the key is usable without any authentication.
+`sign` keeps its usual signature; when the referenced key is gated the system
+biometric prompt is presented automatically.
+
+Per-platform behavior:
+
+- **iOS**: the key is created in the Secure Enclave with the
+  `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` protection class and a
+  biometric access control: `biometryAny` by default, or
+  `biometryCurrentSet` with `invalidateOnEnrollmentChange: true`, which
+  binds the key to the biometric set enrolled at generation time (any
+  enrollment change makes signing fail). If the device passcode is removed,
+  the key is deleted by the system.
+- **Android**: the key is generated with
+  `setUserAuthenticationRequired(true)`, per-operation validity and
+  `AUTH_BIOMETRIC_STRONG` (API 30+; on API 23-29 the deprecated per-use
+  equivalent is used). `sign` presents an `androidx.biometric`
+  `BiometricPrompt` restricted to strong biometrics, which requires the host
+  activity to be a `FragmentActivity` (React Native's `ReactActivity` is
+  one). With `invalidateOnEnrollmentChange: true`, an enrollment change makes
+  the key **permanently** unusable. On devices where StrongBox does not
+  support authentication-bound keys, generation automatically falls back to
+  the TEE.
+
+Requirements and caveats:
+
+- A device PIN/passcode must be set, otherwise generation rejects with
+  `PASSCODE_NOT_SET` (an unprotected key is never created).
+- A (strong) biometric must be enrolled, otherwise generation rejects with
+  `BIOMETRICS_NOT_AVAILABLE`.
+- A canceled prompt rejects `sign` with `USER_CANCELED`.
+- On iOS, add `NSFaceIDUsageDescription` to your app's `Info.plist`,
+  otherwise Face ID authentication is not available for gated keys.
+- The iOS Simulator does not present the authentication prompt for key
+  usage — test on a real device.
+
 ### Sign a message
 
 ```ts
@@ -138,6 +203,7 @@ await deleteKey('PERSONAL_KEYTAG');
 | `ECKey`                   | JWK representation of an Elliptic Curve public key                          |
 | `RSAKey`                  | JWK representation of an RSA public key                                     |
 | `PublicKey`               | Union of `ECKey` \| `RSAKey`                                                |
+| `KeyAuthenticationPolicy` | Optional `generate` options gating key usage behind user authentication     |
 | `CryptoError`             | Rejected promise error (contains `message` and `userInfo`)                  |
 | `CertificateValidationStatus` | Enum of possible X.509 validation statuses                              |
 | `CertificateValidationResult` | Returned object from `verifyCertificateChain`:<br/>`{ isValid: boolean, validationStatus: CertificateValidationStatus }` |
@@ -162,6 +228,11 @@ await deleteKey('PERSONAL_KEYTAG');
 |         `UNKNOWN_EXCEPTION`          |   Android   | Unexpected error                                                        |
 |          `THREADING_ERROR`           |     iOS     | Unexpected error                                                        |
 | `CERTIFICATE_CHAIN_VALIDATION_ERROR` | iOS/Android | X.509 chain validation failed                                           |
+|           `USER_CANCELED`            | iOS/Android | The user dismissed the authentication prompt of a gated key            |
+|       `USER_NOT_AUTHENTICATED`       | iOS/Android | The key requires user authentication which was not performed           |
+|            `AUTH_FAILED`             | iOS/Android | The user authentication attempt failed (or too many attempts/lockout)  |
+|      `BIOMETRICS_NOT_AVAILABLE`      | iOS/Android | Biometric authentication is required but not available or not enrolled |
+|          `PASSCODE_NOT_SET`          | iOS/Android | The device has no PIN/pattern/passcode set                             |
 
 ## Contributing
 
