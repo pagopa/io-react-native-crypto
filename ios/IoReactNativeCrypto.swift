@@ -20,6 +20,14 @@ class IoReactNativeCrypto: NSObject {
         return
       }
 
+      guard !certChain.isEmpty else {
+        DispatchQueue.main.async {
+          let errorInfo = ["message": "Certificate chain array is empty."]
+          reject("E_INVALID_ARGS", "Certificate chain array is empty", NSError(domain: "X509VerificationUtils", code: 1001, userInfo: errorInfo))
+        }
+        return
+      }
+
       let connectTimeoutOpt = options["connectTimeout"] as? Int ?? 15000
       let readTimeoutOpt = options["readTimeout"] as? Int ?? 15000
       let requireCrlOpt = options["requireCrl"] as? Bool ?? false

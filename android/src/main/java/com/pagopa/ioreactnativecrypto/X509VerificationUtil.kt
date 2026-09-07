@@ -24,12 +24,10 @@ import java.net.URL
 import java.security.cert.CRLException
 import java.security.cert.CertPathValidator
 import java.security.cert.CertPathValidatorException
-import java.security.cert.CertStore
 import java.security.cert.CertificateException
 import java.security.cert.CertificateExpiredException
 import java.security.cert.CertificateFactory
 import java.security.cert.CertificateNotYetValidException
-import java.security.cert.CollectionCertStoreParameters
 import java.security.cert.PKIXBuilderParameters
 import java.security.cert.TrustAnchor
 import java.security.cert.X509CRL
@@ -53,7 +51,10 @@ data class X509VerificationOptions(
 
 /**
  * Utility class for X.509 certificate validation, including chain verification and CRL checks.
- * Policy: Revocation is checked only if CRL Distribution Points are present in the chain.
+ * Revocation policy, applied per certificate: a certificate is checked against its CRL only when
+ * it publishes a CRL Distribution Point. A certificate without a CDP cannot be covered by any CRL
+ * and is therefore not a failure. A revoked certificate always fails; an undetermined revocation
+ * status fails only when requireCrl is set.
  * Compatible with Android API Level 23+.
  */
 object X509VerificationUtils {
@@ -65,13 +66,13 @@ object X509VerificationUtils {
    * Represents the status of the certificate chain verification process.
    */
   enum class ValidationStatus {
-    VALID,                      // Chain is valid and trusted (revocation checked if CDPs present).
+    VALID,                      // Chain is valid and trusted (revocation checked for every certificate publishing a CDP).
     INVALID_CHAIN_PATH,         // Basic chain path validation failed (e.g., signature, structure, or revocation issue on API < 24).
     INVALID_TRUST_ANCHOR,       // The provided trust anchor is invalid or doesn't match the chain.
     CERTIFICATE_EXPIRED,        // A certificate in the chain has expired.
     CERTIFICATE_NOT_YET_VALID,  // A certificate in the chain is not yet valid.
-    CERTIFICATE_REVOKED,        // A certificate in the chain has been revoked according to a CRL (API 24+).
-    CRL_FETCH_FAILED,           // Failed to download/access/validate a required CRL (when CDPs were present). Could also indicate undetermined revocation status on API 24+.
+    CERTIFICATE_REVOKED,        // A certificate in the chain has been revoked according to its CRL.
+    CRL_FETCH_FAILED,           // Failed to download/access a required CRL published by a certificate in the chain.
     CRL_PARSE_FAILED,           // Failed to parse a downloaded CRL.
     CRL_EXPIRED,                // A required CRL has expired.
     CRL_SIGNATURE_INVALID,      // The signature on a CRL is invalid.
@@ -175,72 +176,29 @@ object X509VerificationUtils {
       }
     }
 
-    // --- 3. Determine if Revocation Check is Needed and Fetch/Validate CRLs ---
-    val anyCertHasCdp = certificateChain.any { hasCrlDistributionPoint(it) }
-    var crls: List<X509CRL> = emptyList()
-    // This flag determines if PKIXParameters.isRevocationEnabled is set to true.
-    // It will be true only if CRLs were successfully fetched and are available.
-    var performRevocationCheck: Boolean
-
-    if (anyCertHasCdp) {
-      try {
-        crls = fetchCrlsForChain(certificateFactory, certificateChain, trustAnchorCert, options)
-        performRevocationCheck = crls.isNotEmpty()
-
-        // If CRLs are mandatory, we must have successfully fetched at least one.
-        if (options.requireCrl && !performRevocationCheck) {
-          return ValidationResult(false, ValidationStatus.CRL_FETCH_FAILED, "Mandatory CRL check: No valid CRLs could be obtained despite presence of CRL Distribution Points.")
-        }
-      } catch (e: CrlFetchException) {
-        // This explicit catch handles failures from CRL fetching logic.
-        // If CRLs are mandatory, this is a failure. Otherwise, disable revocation checking.
-        if (options.requireCrl) {
-          return ValidationResult(false, e.status, "Mandatory CRL check failed: ${e.message}")
-        } else {
-          performRevocationCheck = false
-        }
-      } catch (e: Exception) {
-        if (options.requireCrl) {
-          return ValidationResult(false, ValidationStatus.CRL_FETCH_FAILED, "Mandatory CRL check failed: ${e.message}")
-        } else {
-          performRevocationCheck = false
-
-        }
-      }
-    } else { // No CDPs found in the certificate chain
-      if (options.requireCrl) {
-        // CRLs are mandatory, but no CDPs were found to fetch them from. This is a failure.
-        return ValidationResult(false, ValidationStatus.CRL_REQUIRED_BUT_MISSING_CDP, "CRL check is mandatory, but no CRL Distribution Point found in the certificate chain.")
-      } else {
-        // No CDPs and CRLs are not mandatory. No CRL-based revocation check will be performed by our fetcher.
-        performRevocationCheck = false
-      }
-    }
-
-    // --- 4. Perform PKIX Path Validation ---
+    // --- 3. Perform PKIX Path Validation (revocation is handled separately) ---
     try {
       val certPath = certificateFactory.generateCertPath(certificateChain)
       // Use the trust anchor set directly
       val pkixParams = PKIXBuilderParameters(setOf(trustAnchor), X509CertSelector())
 
-      // *** Conditionally enable revocation checking ***
-      pkixParams.isRevocationEnabled = performRevocationCheck
-
-      if (performRevocationCheck && crls.isNotEmpty()) {
-        val certStore = CertStore.getInstance("Collection", CollectionCertStoreParameters(crls))
-        pkixParams.addCertStore(certStore)
-      }
+      // Revocation is deliberately not delegated to PKIX: its built-in checker demands a CRL
+      // for every certificate on the path and fails with UNDETERMINED_REVOCATION_STATUS for
+      // chains whose end-entity certificate publishes no CRL Distribution Point.
+      // See checkRevocationPerCertificate for the policy actually applied.
+      pkixParams.isRevocationEnabled = false
 
       val validator = CertPathValidator.getInstance("PKIX")
       validator.validate(certPath, pkixParams)
-
-      return ValidationResult(true, ValidationStatus.VALID)
-
     } catch (cpve: CertPathValidatorException) {
       return handleCertPathValidatorException(cpve, certificateChain)
     } catch (e: Exception) {
       return ValidationResult(false, ValidationStatus.VALIDATION_ERROR, "Validation execution error: ${e.message}")
     }
+
+    // --- 4. Perform the Revocation Check, per certificate ---
+    return checkRevocationPerCertificate(certificateFactory, certificateChain, trustAnchorCert, options)
+      ?: ValidationResult(true, ValidationStatus.VALID)
   }
 
   /**
@@ -299,84 +257,146 @@ object X509VerificationUtils {
   }
 
 
-  /** Internal exception class for CRL fetching issues. */
-  private class CrlFetchException(val status: ValidationStatus, message: String, cause: Throwable? = null) : IOException(message, cause)
+  /**
+   * Outcome of the revocation check for a single certificate.
+   */
+  private sealed class RevocationOutcome {
+    /** A usable CRL was obtained and the certificate is not listed in it. */
+    object NotRevoked : RevocationOutcome()
+
+    /** A usable CRL was obtained and the certificate is listed in it. */
+    object Revoked : RevocationOutcome()
+
+    /** No usable CRL could be obtained, so the revocation status remains unknown. */
+    data class Undetermined(val status: ValidationStatus, val message: String) : RevocationOutcome()
+  }
 
   /**
-   * Fetches CRLs specified in the CRL Distribution Points extension of certificates in the chain.
-   * It tries multiple URLs if available and validates the CRL's validity period and signature.
-   * This is only called if at least one certificate in the chain has a CDP.
+   * Applies the per-certificate revocation policy to the chain.
+   *
+   * A certificate is checked only when it publishes at least one CRL Distribution Point.
+   * A certificate without a CDP is not checkable and is not a failure, since no CRL covering
+   * it can exist.
+   *
+   * A certificate proven to be revoked always fails validation. A certificate whose revocation
+   * status cannot be determined fails only when [X509VerificationOptions.requireCrl] is set.
+   *
+   * @return null when the chain satisfies the policy, otherwise the failing [ValidationResult].
    */
-  private suspend fun fetchCrlsForChain(
+  private suspend fun checkRevocationPerCertificate(
     factory: CertificateFactory,
     chain: List<X509Certificate>,
-    trustAnchorCert: X509Certificate, // Needed for CRL signature verification
+    trustAnchorCert: X509Certificate,
     options: X509VerificationOptions
-  ): List<X509CRL> {
+  ): ValidationResult? {
+    var anyCdpFound = false
 
-    val uniqueCrlUrls = chain.filter { hasCrlDistributionPoint(it) }
-      .flatMap { extractCrlDistributionPoints(it) }
-      .distinct()
+    for ((index, cert) in chain.withIndex()) {
+      val crlUrls = extractCrlDistributionPoints(cert)
+      if (crlUrls.isEmpty()) continue // Not checkable: no CRL can cover this certificate.
+      anyCdpFound = true
 
-    if (uniqueCrlUrls.isEmpty()) {
-      return emptyList()
+      // The issuer is the next certificate in the chain, or the trust anchor for the last one.
+      val issuerCert = chain.getOrNull(index + 1) ?: trustAnchorCert
+
+      when (val outcome = checkCertificateAgainstCrls(factory, cert, issuerCert, crlUrls, options)) {
+        is RevocationOutcome.NotRevoked -> Unit
+        is RevocationOutcome.Revoked -> return ValidationResult(
+          false,
+          ValidationStatus.CERTIFICATE_REVOKED,
+          "Certificate is revoked according to its CRL: ${cert.subjectX500Principal}",
+          cert
+        )
+        is RevocationOutcome.Undetermined -> if (options.requireCrl) {
+          return ValidationResult(
+            false,
+            outcome.status,
+            "Mandatory CRL check failed for ${cert.subjectX500Principal}: ${outcome.message}",
+            cert
+          )
+        }
+      }
     }
 
-    val validCrls = mutableListOf<X509CRL>()
-    var lastException: CrlFetchException? = null // Track the last significant error
+    if (!anyCdpFound && options.requireCrl) {
+      return ValidationResult(
+        false,
+        ValidationStatus.CRL_REQUIRED_BUT_MISSING_CDP,
+        "CRL check is mandatory, but no CRL Distribution Point was found in the certificate chain."
+      )
+    }
 
-    for (url in uniqueCrlUrls) {
+    return null
+  }
+
+  /**
+   * Downloads the CRLs published by a single certificate and looks that certificate up in the
+   * first CRL that passes validation.
+   *
+   * A CRL is usable only when it is issued by the certificate's own issuer, carries a valid
+   * signature from that issuer, and is current.
+   */
+  private suspend fun checkCertificateAgainstCrls(
+    factory: CertificateFactory,
+    cert: X509Certificate,
+    issuerCert: X509Certificate,
+    crlUrls: List<String>,
+    options: X509VerificationOptions
+  ): RevocationOutcome {
+    var lastStatus = ValidationStatus.CRL_FETCH_FAILED
+    var lastMessage = "No CRL Distribution Point could be reached."
+
+    for (url in crlUrls) {
       try {
         val crlBytes = downloadCrlWithTimeout(url, options)
         val crl = factory.generateCRL(ByteArrayInputStream(crlBytes)) as X509CRL
 
-        // --- CRL Validation ---
-        // 1. Check expiry
-        if (crl.nextUpdate != null && Date().after(crl.nextUpdate)) {
-          throw CrlFetchException(ValidationStatus.CRL_EXPIRED, "CRL from $url is expired (Next Update: ${crl.nextUpdate}).")
+        // 1. The CRL must be issued by the certificate's own issuer.
+        if (crl.issuerX500Principal != cert.issuerX500Principal) {
+          lastStatus = ValidationStatus.CRL_SIGNATURE_INVALID
+          lastMessage =
+            "CRL from $url is issued by ${crl.issuerX500Principal}, expected ${cert.issuerX500Principal}."
+          continue
         }
 
-        // 2. Verify signature
-        val issuerCert = findIssuerCertificate(crl.issuerX500Principal, chain, trustAnchorCert)
-          ?: throw CrlFetchException(ValidationStatus.CRL_SIGNATURE_INVALID, "Cannot find issuer certificate for CRL from $url (Issuer: ${crl.issuerX500Principal}).")
+        // 2. The CRL must be current.
+        val now = Date()
+        val nextUpdate = crl.nextUpdate
+        if (nextUpdate == null || now.after(nextUpdate) || now.before(crl.thisUpdate)) {
+          lastStatus = ValidationStatus.CRL_EXPIRED
+          lastMessage =
+            "CRL from $url is not current (This Update: ${crl.thisUpdate}, Next Update: $nextUpdate)."
+          continue
+        }
 
+        // 3. The CRL must carry a valid signature from the issuer.
         try {
           crl.verify(issuerCert.publicKey)
         } catch (sigEx: Exception) {
-          throw CrlFetchException(ValidationStatus.CRL_SIGNATURE_INVALID, "CRL signature verification failed for $url: ${sigEx.message}", sigEx)
+          lastStatus = ValidationStatus.CRL_SIGNATURE_INVALID
+          lastMessage = "CRL signature verification failed for $url: ${sigEx.message}"
+          continue
         }
 
-        // Add successfully validated CRL
-        validCrls.add(crl)
+        return if (crl.isRevoked(cert)) RevocationOutcome.Revoked else RevocationOutcome.NotRevoked
 
-      } catch (e: CrlFetchException) {
-        lastException = e // Record the error
       } catch (e: TimeoutCancellationException) {
-        lastException = CrlFetchException(ValidationStatus.CRL_FETCH_FAILED, "Timeout downloading CRL from $url", e)
-      } catch (e: IOException) { // Network or connection errors
-        lastException = CrlFetchException(ValidationStatus.CRL_FETCH_FAILED, "Network error for CRL $url: ${e.message}", e)
-      } catch (e: CRLException) { // Parsing errors
-        lastException = CrlFetchException(ValidationStatus.CRL_PARSE_FAILED, "Error parsing CRL from $url: ${e.message}", e)
-      } catch (e: Exception) { // Other unexpected errors
-        lastException = CrlFetchException(ValidationStatus.CRL_FETCH_FAILED, "Unexpected error for CRL $url: ${e.message}", e)
+        lastStatus = ValidationStatus.CRL_FETCH_FAILED
+        lastMessage = "Timeout downloading CRL from $url"
+      } catch (e: CRLException) {
+        lastStatus = ValidationStatus.CRL_PARSE_FAILED
+        lastMessage = "Error parsing CRL from $url: ${e.message}"
+      } catch (e: IOException) {
+        lastStatus = ValidationStatus.CRL_FETCH_FAILED
+        lastMessage = "Network error for CRL $url: ${e.message}"
+      } catch (e: Exception) {
+        lastStatus = ValidationStatus.CRL_FETCH_FAILED
+        lastMessage = "Unexpected error for CRL $url: ${e.message}"
       }
     }
 
-    // If we attempted to fetch CRLs (because CDPs existed) but ended up with none,
-    // and there was at least one error during the process, throw the last error.
-    if (validCrls.isEmpty() && lastException != null) {
-      throw lastException
-    }
-
-    return validCrls
-  }
-
-  /** Finds the certificate that issued a CRL by matching Subject DN to CRL Issuer DN. */
-  private fun findIssuerCertificate(crlIssuer: java.security.Principal, chain: List<X509Certificate>, trustAnchor: X509Certificate): X509Certificate? {
-    if (trustAnchor.subjectX500Principal == crlIssuer) {
-      return trustAnchor
-    }
-    return chain.find { it.subjectX500Principal == crlIssuer }
+    Log.w(TAG, "Revocation status undetermined for ${cert.subjectX500Principal}: $lastMessage")
+    return RevocationOutcome.Undetermined(lastStatus, lastMessage)
   }
 
   /** Downloads CRL bytes from a URL with specified timeouts. */
@@ -408,17 +428,6 @@ object X509VerificationUtils {
       }
     }
   }
-
-  /** Checks if a certificate contains the CRL Distribution Points extension (OID 2.5.29.31). */
-  private fun hasCrlDistributionPoint(cert: X509Certificate): Boolean {
-    return try {
-      val oid = Extension.cRLDistributionPoints.id
-      cert.getExtensionValue(oid) != null
-    } catch (e: Exception) {
-      false
-    }
-  }
-
 
   /**
    * Extracts CRL Distribution Point URLs (HTTP/HTTPS only) from the certificate extension.
