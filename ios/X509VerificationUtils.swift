@@ -67,10 +67,10 @@ class X509VerificationUtils {
   ///
   /// This function performs the following steps:
   /// 1. Decodes the base64-encoded certificate chain and trust anchor.
-  /// 2. Handles a special case where the chain contains only the trust anchor (self-signed root verification).
-  /// 3. Validates the structure and linkage of the chain to ensure it connects properly to the trust anchor.
+  /// 2. Builds the effective chain, up to and including the certificate that connects to the trust anchor.
+  /// 3. Validates that the chain connects to the trust anchor at all.
   /// 4. Constructs and evaluates a `SecTrust` object using the specified anchor and policies.
-  /// 5. Optionally performs a manual CRL (Certificate Revocation List) check on the leaf certificate if enabled.
+  /// 5. Applies the per-certificate CRL (Certificate Revocation List) policy to the chain.
   ///
   /// The chain passed in should include the leaf and any intermediate certificates,
   /// **excluding** the trust anchor (which is provided separately).
@@ -143,9 +143,11 @@ class X509VerificationUtils {
       decodedChainObjectsFromInput.append(certificate)
     }
 
-    if decodedChainObjectsFromInput.isEmpty && !certChainBase64.isEmpty {
+    if decodedChainObjectsFromInput.isEmpty {
       let errorMsg =
-        "Certificate chain object array is empty after decoding loop, although input was not empty."
+        certChainBase64.isEmpty
+        ? "Certificate chain is empty."
+        : "Certificate chain object array is empty after decoding loop, although input was not empty."
       completion(
         ValidationResult(
           isValid: false, status: .invalidChainPath, errorMessage: errorMsg,
@@ -153,21 +155,11 @@ class X509VerificationUtils {
       return
     }
 
-    // --- 1.5 Special Case: Validate Trust Anchor Alone ---
-    let inputData =
-      SecCertificateCopyData(decodedChainObjectsFromInput.first!) as Data
-    if taData == inputData && isSelfSigned(trustAnchorSecCert) {
-      evaluateTrust(
-        certificateChain: [trustAnchorSecCert],
-        trustAnchor: trustAnchorSecCert,
-        options: options
-      ) { result in
-        completion(result)
-      }
-      return
-    }
-
-    // --- 1.5 Pre-check for Chain Lengthening and Connection to Trust Anchor ---
+    // --- 1.5 Pre-check for Connection to the Trust Anchor ---
+    // The effective chain runs up to and including the first certificate that either is the
+    // trust anchor or is issued by it. Certificates beyond that point are extraneous and are
+    // dropped rather than rejected, matching the Android implementation.
+    let trustAnchorDER = SecCertificateCopyData(trustAnchorSecCert) as Data
     var effectiveChainForSecTrust: [SecCertificate] = []
     var foundConnectionToAnchor = false
 
@@ -185,36 +177,23 @@ class X509VerificationUtils {
       return
     }
 
-    for (index, currentCertInInputChain)
-      in decodedChainObjectsFromInput.enumerated()
-    {
-      if foundConnectionToAnchor {
-        // If we have already found the connection point, any subsequent certificate
-        // in the input chain is considered extraneous (lengthening).
-        let errorMsg =
-          "Certificate chain is longer than necessary. Extraneous certificate found at input index \(index)."
-        completion(
-          ValidationResult(
-            isValid: false, status: .validationError, errorMessage: errorMsg,
-            failingCertificateInfo: getCertificateInfo(currentCertInInputChain))
-        )
-        return
+    for currentCertInInputChain in decodedChainObjectsFromInput {
+      effectiveChainForSecTrust.append(currentCertInInputChain)
+
+      // The certificate either is the trust anchor itself, or is issued by it.
+      let currentCertDER =
+        SecCertificateCopyData(currentCertInInputChain) as Data
+      if currentCertDER == trustAnchorDER {
+        foundConnectionToAnchor = true
+      } else if let currentCertIssuerName =
+        SecCertificateCopyNormalizedIssuerSequence(currentCertInInputChain),
+        currentCertIssuerName == anchorSubjectName
+      {
+        foundConnectionToAnchor = true
       }
 
-      // Check if the current certificate from the input chain IS the trust anchor.
-      if currentCertInInputChain == trustAnchorSecCert {
-        foundConnectionToAnchor = true
-      } else {
-        // It's not the anchor, so add it to the chain we're building for SecTrust.
-        effectiveChainForSecTrust.append(currentCertInInputChain)
-
-        // Check if this non-anchor certificate is issued by the trust anchor.
-        if let currentCertIssuerName =
-          SecCertificateCopyNormalizedIssuerSequence(currentCertInInputChain),
-          currentCertIssuerName == anchorSubjectName
-        {
-          foundConnectionToAnchor = true
-        }
+      if foundConnectionToAnchor {
+        break
       }
     }
 
@@ -295,22 +274,23 @@ class X509VerificationUtils {
             failingCertificateInfo: nil)
         } else {
           result = self.mapErrorToValidationResult(
-            trust: evaluatedTrust, resultType: trustResultType,
-            options: options, error: error)
+            trust: evaluatedTrust, resultType: trustResultType, error: error)
         }
       } else {
         var trustResultType: SecTrustResultType = .fatalTrustFailure
         SecTrustGetTrustResult(evaluatedTrust, &trustResultType)
         result = self.mapErrorToValidationResult(
-          trust: evaluatedTrust, resultType: trustResultType, options: options,
-          error: error)
+          trust: evaluatedTrust, resultType: trustResultType, error: error)
       }
 
       // --- Manual CRL Check ---
-      if options.requireCrl {
+      // Revocation is checked whenever the chain is otherwise trusted, so that a revoked
+      // certificate is caught even when CRLs are not mandatory. A chain that already failed
+      // path validation is reported as-is, without spending network requests on it.
+      if result.isValid {
         self.evaluateCRLRevocationStatus(
-          trust: evaluatedTrust, options: options, completion: completion,
-          fallbackResult: result)
+          certificateChain: certificateChain, trustAnchor: trustAnchor,
+          options: options, fallbackResult: result, completion: completion)
       } else {
         DispatchQueue.main.async {
           completion(result)
@@ -321,8 +301,7 @@ class X509VerificationUtils {
 
   // --- Error Mapping Helper ---
   private func mapErrorToValidationResult(
-    trust: SecTrust, resultType: SecTrustResultType,
-    options: X509VerificationOptions, error: Error?
+    trust: SecTrust, resultType: SecTrustResultType, error: Error?
   ) -> ValidationResult {
     var finalStatus: ValidationStatus = .invalidChainPath  // Start with a generic failure
     var finalMessage: String = "Certificate chain validation failed."
@@ -367,19 +346,7 @@ class X509VerificationUtils {
           finalMessage =
             "Revocation check failed: \(nsError.localizedDescription)"
         default:
-          if options.requireCrl {
-            switch resultType {
-            case .deny, .fatalTrustFailure, .recoverableTrustFailure:
-              finalStatus = .crlFetchFailed
-              finalMessage +=
-                " (Trust evaluation failed and CRLs were required, likely due to a revocation-related failure.)"
-            default:
-              finalStatus = .validationError
-              finalMessage += " (Unhandled result type with CRLs required.)"
-            }
-          } else {
-            finalStatus = .invalidChainPath
-          }
+          finalStatus = .invalidChainPath
         }
       } else {
         if finalStatus == .invalidChainPath { finalStatus = .validationError }
@@ -398,15 +365,10 @@ class X509VerificationUtils {
         finalMessage =
           "Trust evaluation denied or fatal error. Result type: \(resultType)."
       case .recoverableTrustFailure:
-        // This can be due to various reasons (e.g., expired but not yet fatal, or a soft revocation failure if not strict).
-        finalStatus =
-          options.requireCrl ? .certificateRevoked : .invalidChainPath
-        if options.requireCrl && finalStatus == .certificateRevoked {
-          finalMessage =
-            "Recoverable trust failure (result: \(resultType)); CRLs were mandatory, assumed revocation issue."
-        } else {
-          finalMessage = "Recoverable trust failure (result: \(resultType))."
-        }
+        // Revocation is never evaluated here: the policy is a basic X.509 one, and CRLs are
+        // checked separately. So this is always a path problem.
+        finalStatus = .invalidChainPath
+        finalMessage = "Recoverable trust failure (result: \(resultType))." 
       default:
         finalStatus = .invalidChainPath
         finalMessage = "Unknown trust result type without error: \(resultType)."
@@ -427,25 +389,6 @@ class X509VerificationUtils {
     return info
   }
 
-  /// Determines whether a given certificate is self-signed.
-  ///
-  /// A certificate is considered self-signed if its issuer and subject are identical,
-  /// meaning it has signed itself and is typically used as a trust anchor (root CA).
-  ///
-  /// This check does not verify the cryptographic signature itself; it only compares
-  /// the normalized subject and issuer sequences.
-  ///
-  /// - Parameter cert: The `SecCertificate` to evaluate.
-  /// - Returns: `true` if the certificate's subject and issuer are the same, otherwise `false`.
-  private func isSelfSigned(_ cert: SecCertificate) -> Bool {
-    guard let subject = SecCertificateCopyNormalizedSubjectSequence(cert),
-      let issuer = SecCertificateCopyNormalizedIssuerSequence(cert)
-    else {
-      return false
-    }
-    return subject == issuer
-  }
-
   /// Maps an `Int32` CRL validation error code (from the native C/OpenSSL layer)
   /// to a corresponding `ValidationStatus` enum case.
   ///
@@ -458,7 +401,7 @@ class X509VerificationUtils {
   private func mapCRLErrorCodeToStatus(_ code: Int32) -> ValidationStatus {
     switch code {
     case -1: return .validationError
-    case -2: return .crlFetchFailed
+    case -2: return .crlParseFailed
     case -3: return .crlSignatureInvalid
     case -4: return .crlExpired
     case -5: return .validationError
@@ -467,86 +410,110 @@ class X509VerificationUtils {
     }
   }
 
-  /// Performs a manual CRL (Certificate Revocation List) check on the leaf certificate if required by options.
+  /// Applies the per-certificate revocation policy to the chain.
   ///
-  /// This function is invoked after a successful or fallback trust evaluation when `requireCrl` is set to `true`.
-  /// It attempts to extract the CRL Distribution Point (CDP) from the leaf certificate, fetch the CRL,
-  /// and check whether the leaf certificate has been explicitly revoked by the issuer.
+  /// A certificate is checked only when it publishes at least one CRL Distribution Point.
+  /// A certificate without a CDP is not checkable and is not a failure, since no CRL covering
+  /// it can exist.
   ///
-  /// If the revocation status is successfully determined:
-  /// - Returns `.certificateRevoked` if revoked,
-  /// - Returns the original trust result if not revoked.
-  ///
-  /// If the CRL check fails due to fetch or parsing issues:
-  /// - Maps the error to a corresponding `ValidationStatus` such as `.crlFetchFailed`, `.crlExpired`, or `.crlSignatureInvalid`.
+  /// A certificate proven to be revoked always fails validation. A certificate whose revocation
+  /// status cannot be determined fails only when `requireCrl` is set. When no certificate in the
+  /// chain publishes a CDP at all, `requireCrl` yields `.crlRequiredButMissingCDP`.
   ///
   /// - Parameters:
-  ///   - trust: The evaluated `SecTrust` object containing the certificate chain.
-  ///   - completion: Completion handler to return the final `ValidationResult`.
-  ///   - fallbackResult: The result of the initial trust evaluation to fall back to if CRL check succeeds or is skipped.
+  ///   - certificateChain: The chain that was validated, leaf first, excluding the trust anchor.
+  ///   - trustAnchor: The trust anchor, used as the issuer of the last certificate in the chain.
+  ///   - options: The validation options in force.
+  ///   - fallbackResult: The successful trust result, returned when the policy is satisfied.
+  ///   - completion: Completion handler receiving the final `ValidationResult`.
   private func evaluateCRLRevocationStatus(
-    trust: SecTrust,
+    certificateChain: [SecCertificate],
+    trustAnchor: SecCertificate,
     options: X509VerificationOptions,
-    completion: @escaping (ValidationResult) -> Void,
-    fallbackResult: ValidationResult
+    fallbackResult: ValidationResult,
+    completion: @escaping (ValidationResult) -> Void
   ) {
-    guard let leafCert = SecTrustGetCertificateAtIndex(trust, 0) else {
-      completion(fallbackResult)
-      return
-    }
+    var anyCdpFound = false
 
-    let leafCertData = SecCertificateCopyData(leafCert) as Data
-
-    guard
-      let crlURL = X509RevocationChecker.extractCRLDistributionPoint(
-        from: leafCertData)
-    else {
-      completion(
-        ValidationResult(
-          isValid: false,
-          status: .crlRequiredButMissingCDP,
-          errorMessage: "CRL required but no CDP found in certificate.",
-          failingCertificateInfo: getCertificateInfo(leafCert)
-        ))
-      return
-    }
-
-    let issuerCert: SecCertificate? =
-      SecTrustGetCertificateCount(trust) > 1
-      ? SecTrustGetCertificateAtIndex(trust, 1)
-      : SecTrustGetCertificateAtIndex(trust, 0)
-    let issuerDER: Data? = issuerCert.map { SecCertificateCopyData($0) as Data }
-
-    X509RevocationChecker.isCertRevokedByCRL(
-      certDER: leafCertData, issuerDER: issuerDER, crlURL: crlURL,
-      readTimeout: options.readTimeout
-    ) { isRevoked, errorCode in
+    func finish(_ result: ValidationResult) {
       DispatchQueue.main.async {
-        if let revoked = isRevoked {
-          if revoked {
-            completion(
-              ValidationResult(
-                isValid: false,
-                status: .certificateRevoked,
-                errorMessage:
-                  "Leaf certificate is revoked according to CRL: \(crlURL)",
-                failingCertificateInfo: self.getCertificateInfo(leafCert)
-              ))
-          } else {
-            completion(fallbackResult)
-          }
-        } else {
-          let status = self.mapCRLErrorCodeToStatus(errorCode ?? -999)
-          completion(
+        completion(result)
+      }
+    }
+
+    // Walks the chain sequentially, since every CRL fetch is asynchronous.
+    func processCertificate(at index: Int) {
+      guard index < certificateChain.count else {
+        if !anyCdpFound && options.requireCrl {
+          finish(
             ValidationResult(
               isValid: false,
-              status: status,
+              status: .crlRequiredButMissingCDP,
               errorMessage:
-                "Manual CRL check failed (status code: \(errorCode ?? -999))",
-              failingCertificateInfo: self.getCertificateInfo(leafCert)
+                "CRL check is mandatory, but no CRL Distribution Point was found in the certificate chain.",
+              failingCertificateInfo: certificateChain.first.map {
+                self.getCertificateInfo($0)
+              }
             ))
+        } else {
+          finish(fallbackResult)
+        }
+        return
+      }
+
+      let cert = certificateChain[index]
+      let certDER = SecCertificateCopyData(cert) as Data
+      let crlURLs = X509RevocationChecker.extractCRLDistributionPoints(
+        from: certDER)
+
+      guard !crlURLs.isEmpty else {
+        // Not checkable: no CRL can cover this certificate.
+        processCertificate(at: index + 1)
+        return
+      }
+      anyCdpFound = true
+
+      // The issuer is the next certificate in the chain, or the trust anchor for the last one.
+      let issuer =
+        index + 1 < certificateChain.count
+        ? certificateChain[index + 1] : trustAnchor
+      let issuerDER = SecCertificateCopyData(issuer) as Data
+
+      X509RevocationChecker.isCertRevokedByCRL(
+        certDER: certDER, issuerDER: issuerDER, crlURLs: crlURLs,
+        readTimeout: options.readTimeout
+      ) { isRevoked, errorCode in
+        guard let isRevoked = isRevoked else {
+          // Revocation status undetermined: fatal only when CRLs are mandatory.
+          if options.requireCrl {
+            finish(
+              ValidationResult(
+                isValid: false,
+                status: self.mapCRLErrorCodeToStatus(errorCode ?? -999),
+                errorMessage:
+                  "Mandatory CRL check failed (status code: \(errorCode ?? -999))",
+                failingCertificateInfo: self.getCertificateInfo(cert)
+              ))
+          } else {
+            processCertificate(at: index + 1)
+          }
+          return
+        }
+
+        if isRevoked {
+          finish(
+            ValidationResult(
+              isValid: false,
+              status: .certificateRevoked,
+              errorMessage: "Certificate is revoked according to its CRL.",
+              failingCertificateInfo: self.getCertificateInfo(cert)
+            ))
+        } else {
+          processCertificate(at: index + 1)
         }
       }
     }
+
+    processCertificate(at: 0)
   }
 }

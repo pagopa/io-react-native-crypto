@@ -121,18 +121,17 @@ int check_cert_revocation_with_crl(const unsigned char *cert_der, int cert_len,
 }
 
 /**
- * Extracts the first available CRL Distribution Point URI from a DER-encoded
- * X.509 certificate. This URI is where the CRL (Certificate Revocation List)
- * can be downloaded from.
+ * Extracts every CRL Distribution Point URI from a DER-encoded X.509 certificate.
+ * These URIs are where the CRLs (Certificate Revocation Lists) can be downloaded from.
  *
  * @param cert_der Pointer to the DER-encoded certificate.
  * @param cert_len Length of the certificate in bytes.
  *
- * @return const char* A malloc'd null-terminated string containing the CRL
- * Distribution Point URL, or NULL if none is found. The caller is responsible
- * for freeing the memory.
+ * @return const char* A malloc'd null-terminated string holding the URIs separated by '\n',
+ * or NULL if the certificate publishes none. The caller is responsible for freeing the memory.
  */
-const char *extractCRLFromCert(const unsigned char *cert_der, int cert_len) {
+const char *extractCRLDistributionPointsFromCert(const unsigned char *cert_der,
+                                                 int cert_len) {
   const unsigned char *ptr = cert_der;
   X509 *cert = d2i_X509(NULL, &ptr, cert_len);
   if (!cert)
@@ -142,36 +141,75 @@ const char *extractCRLFromCert(const unsigned char *cert_der, int cert_len) {
       X509_get_ext_d2i(cert, NID_crl_distribution_points, NULL, NULL));
 
   if (!crl_dp || sk_DIST_POINT_num(crl_dp) == 0) {
+    if (crl_dp)
+      sk_DIST_POINT_pop_free(crl_dp, DIST_POINT_free);
     X509_free(cert);
     return NULL;
   }
 
+  // Collect every URI general name, joined by newlines.
+  size_t capacity = 256;
+  size_t length = 0;
+  char *result = (char *)malloc(capacity);
+  if (!result) {
+    sk_DIST_POINT_pop_free(crl_dp, DIST_POINT_free);
+    X509_free(cert);
+    return NULL;
+  }
+  result[0] = '\0';
+
   for (int i = 0; i < sk_DIST_POINT_num(crl_dp); i++) {
     DIST_POINT *dp = sk_DIST_POINT_value(crl_dp, i);
-    if (dp->distpoint && dp->distpoint->type == 0 &&
-        dp->distpoint->name.fullname) {
-      GENERAL_NAMES *names = dp->distpoint->name.fullname;
-      for (int j = 0; j < sk_GENERAL_NAME_num(names); j++) {
-        GENERAL_NAME *gen = sk_GENERAL_NAME_value(names, j);
-        if (gen->type == GEN_URI) {
-          ASN1_IA5STRING *uri = gen->d.uniformResourceIdentifier;
-          char *url = (char *)malloc(uri->length + 1);
-          if (!url) {
-            sk_DIST_POINT_pop_free(crl_dp, DIST_POINT_free);
-            X509_free(cert);
-            return NULL;
-          }
-          memcpy(url, uri->data, uri->length);
-          url[uri->length] = '\0';
-          X509_free(cert);
-          sk_DIST_POINT_pop_free(crl_dp, DIST_POINT_free);
-          return url;
-        }
+    if (!dp->distpoint || dp->distpoint->type != 0 ||
+        !dp->distpoint->name.fullname) {
+      continue;
+    }
+
+    GENERAL_NAMES *names = dp->distpoint->name.fullname;
+    for (int j = 0; j < sk_GENERAL_NAME_num(names); j++) {
+      GENERAL_NAME *gen = sk_GENERAL_NAME_value(names, j);
+      if (gen->type != GEN_URI) {
+        continue;
       }
+
+      ASN1_IA5STRING *uri = gen->d.uniformResourceIdentifier;
+      if (uri->length <= 0) {
+        continue;
+      }
+
+      // Room for an optional separator, the URI and the terminator.
+      size_t needed = length + (length > 0 ? 1 : 0) + (size_t)uri->length + 1;
+      if (needed > capacity) {
+        size_t grown = capacity;
+        while (grown < needed) {
+          grown *= 2;
+        }
+        char *resized = (char *)realloc(result, grown);
+        if (!resized) {
+          free(result);
+          sk_DIST_POINT_pop_free(crl_dp, DIST_POINT_free);
+          X509_free(cert);
+          return NULL;
+        }
+        result = resized;
+        capacity = grown;
+      }
+
+      if (length > 0) {
+        result[length++] = '\n';
+      }
+      memcpy(result + length, uri->data, (size_t)uri->length);
+      length += (size_t)uri->length;
+      result[length] = '\0';
     }
   }
 
   sk_DIST_POINT_pop_free(crl_dp, DIST_POINT_free);
   X509_free(cert);
-  return NULL;
+
+  if (length == 0) {
+    free(result);
+    return NULL;
+  }
+  return result;
 }
