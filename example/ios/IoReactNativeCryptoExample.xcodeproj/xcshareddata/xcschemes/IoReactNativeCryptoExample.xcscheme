@@ -33,7 +33,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
-               BuildableName = "IoReactNativeCryptoExampleTests.xctest"
+               BuildableName = "IoReactNativeCryptoExampleTests"
                BlueprintName = "IoReactNativeCryptoExampleTests"
                ReferencedContainer = "container:IoReactNativeCryptoExample.xcodeproj">
             </BuildableReference>

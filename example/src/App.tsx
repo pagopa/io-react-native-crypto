@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from "react";
 
 import {
   SafeAreaView,
@@ -7,22 +7,25 @@ import {
   TextInput,
   Button,
   ScrollView,
-} from 'react-native';
+} from "react-native";
 import {
   CryptoError,
   deleteKey,
   generate,
-  getPublicKey, getPublicKeyFixed,
+  getPublicKey,
+  getPublicKeyFixed,
   isKeyStrongboxBacked,
-  sign, verifyCertificateChain,
-} from '@pagopa/io-react-native-crypto';
+  sign,
+  verifyCertificateChain,
+} from "@pagopa/io-react-native-crypto";
 import {
-  mockCertificateChainReal, mockCertNoCrl,
-} from './mocks/certifaces.mock';
+  mockCertificateChainReal,
+  mockCertNoCrl,
+} from "./mocks/certifaces.mock";
 
 export default function App() {
   const [logText, setLogText] = React.useState<string | undefined>();
-  const [keyTag, setKeyTag] = React.useState<string>('key');
+  const [keyTag, setKeyTag] = React.useState<string>("key");
 
   return (
     <SafeAreaView style={{ flex: 1, padding: 20 }}>
@@ -32,14 +35,14 @@ export default function App() {
           padding: 16,
         }}
       >
-        <Text style={{ fontWeight: 'bold', height: 'auto' }}>Ket tag: </Text>
+        <Text style={{ fontWeight: "bold", height: "auto" }}>Ket tag: </Text>
         <TextInput
           onChangeText={(newTag) => setKeyTag(newTag)}
           defaultValue={keyTag}
           style={{
             marginVertical: 8,
             height: 40,
-            borderColor: 'black',
+            borderColor: "black",
             borderWidth: 1,
             borderRadius: 10,
           }}
@@ -47,8 +50,8 @@ export default function App() {
         />
         <View
           style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
+            flexDirection: "row",
+            justifyContent: "space-between",
           }}
         >
           <ScrollView horizontal>
@@ -113,8 +116,8 @@ export default function App() {
               onPress={() => {
                 deleteKey(keyTag)
                   .then(() => {
-                    console.log('true');
-                    setLogText('true');
+                    console.log("true");
+                    setLogText("true");
                   })
                   .catch((reason: CryptoError) => {
                     console.log(reason);
@@ -128,7 +131,7 @@ export default function App() {
                 isKeyStrongboxBacked(keyTag)
                   .then((result) => {
                     console.log(result);
-                    setLogText(result ? 'true' : 'false');
+                    setLogText(result ? "true" : "false");
                   })
                   .catch((reason: CryptoError) => {
                     console.log(reason);
@@ -139,11 +142,15 @@ export default function App() {
             <Button
               title="verifyCertificatesWithCRL"
               onPress={() => {
-                verifyCertificateChain(mockCertificateChainReal.x5c, mockCertificateChainReal.trustAnchorCert, {
-                  connectTimeout: 10000,
-                  readTimeout: 10000,
-                  requireCrl: true
-                })
+                verifyCertificateChain(
+                  mockCertificateChainReal.x5c,
+                  mockCertificateChainReal.trustAnchorCert,
+                  {
+                    connectTimeout: 10000,
+                    readTimeout: 10000,
+                    requireCrl: true,
+                  }
+                )
                   .then((result) => {
                     console.log(result);
                     setLogText(JSON.stringify(result));
@@ -151,17 +158,21 @@ export default function App() {
                   .catch((reason: CryptoError) => {
                     console.log(reason);
                     setLogText(`${reason}`);
-                  })
+                  });
               }}
             />
             <Button
               title="verifyCertificatesNoCRL"
               onPress={() => {
-                verifyCertificateChain(mockCertNoCrl.x5c, mockCertNoCrl.trustAnchorCert, {
-                  connectTimeout: 10000,
-                  readTimeout: 10000,
-                  requireCrl: false
-                })
+                verifyCertificateChain(
+                  mockCertNoCrl.x5c,
+                  mockCertNoCrl.trustAnchorCert,
+                  {
+                    connectTimeout: 10000,
+                    readTimeout: 10000,
+                    requireCrl: false,
+                  }
+                )
                   .then((result) => {
                     console.log(result);
                     setLogText(JSON.stringify(result));
@@ -169,7 +180,7 @@ export default function App() {
                   .catch((reason: CryptoError) => {
                     console.log(reason);
                     setLogText(`${reason}`);
-                  })
+                  });
               }}
             />
           </ScrollView>
@@ -180,13 +191,13 @@ export default function App() {
             padding: 8,
             marginTop: 16,
             borderRadius: 10,
-            backgroundColor: 'gray',
+            backgroundColor: "gray",
           }}
         >
           <Text
             style={{
               marginVertical: 4,
-              color: '#FFF',
+              color: "#FFF",
             }}
           >
             {logText}
